@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PickPath AI - Live Navigation</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --bg-color: #f4f5f7;
+            --sidebar-bg: #ffffff;
+            --primary-red: #cc0000;
+            --dark-slate: #0F172A;
+            --rack-empty: #d1d5db;
+        }
+        body {
+            margin: 0; padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            display: flex; height: 100vh; box-sizing: border-box; gap: 20px;
+            overflow: hidden;
+        }
+        
+        /* Sidebar container */
+        .sidebar {
+            width: 320px; background: var(--sidebar-bg); border-radius: 12px;
+            padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+            display: flex; flex-direction: column;
+        }
+
+        /* --- MODE 1: SETUP PANEL --- */
+        #setupModePanel { display: flex; flex-direction: column; flex: 1; }
+        .sidebar h3 { color: var(--primary-red); margin-top: 0; font-size: 14px; }
+        .search-container { display: flex; gap: 10px; margin-bottom: 30px; }
+        .search-container input {
+            flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; outline: none;
+        }
+        .search-container button {
+            background: var(--primary-red); color: white; border: none;
+            padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;
+        }
+        
+        .pick-list { flex: 1; overflow-y: auto; margin-bottom: 20px; }
+        .pick-item {
+            padding: 12px; border: 1px solid #eee; border-radius: 8px;
+            margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+            display: flex; justify-content: space-between; align-items: flex-start;
+        }
+        .item-info strong { color: #1E293B; font-size: 14px; }
+        .delete-btn {
+            background: transparent; color: #ef4444; border: none;
+            cursor: pointer; font-weight: bold; font-size: 18px; padding: 0 5px;
+        }
+        .start-nav-btn {
+            background: var(--dark-slate); color: white; border: none; width: 100%;
+            padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold;
+            font-size: 15px; display: none; box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+        }
+
+        /* --- MODE 2: NAVIGATION PANEL (Replaces Setup Panel) --- */
+        #navModePanel { display: none; flex-direction: column; flex: 1; justify-content: center; }
+        .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .nav-badge { background: var(--dark-slate); color: white; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+        .nav-target-text { color: #64748B; font-weight: bold; font-size: 14px; }
+        .nav-item-name { color: #1E293B; font-size: 22px; margin: 0 0 8px 0; font-weight: bold; line-height: 1.2; }
+        .nav-item-sku { color: var(--primary-red); font-size: 14px; margin: 0 0 30px 0; font-weight: 600; }
+        .nav-controls { display: flex; gap: 12px; flex-direction: column; }
+        .nav-btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 15px; border: none; }
+        .btn-next { background: var(--dark-slate); color: white; margin-bottom: 8px;}
+        .btn-back { background: transparent; border: 1.5px solid #CBD5E1; color: #475569; }
+
+        /* Map Container - Reverted to exact UI INSPO layout */
+        .map-container {
+            flex: 1; background: var(--sidebar-bg); border-radius: 12px;
+            padding: 20px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            overflow: auto;
+        }
+        #gridArea {
+            display: flex; flex-direction: column; 
+            align-items: center; justify-content: center;
+        }
+        .warehouse-row {
+            display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 6px;
+        }
+        .rack-group { display: flex; gap: 4px; }
+        
+        /* Reverted to fixed square dimensions */
+        .rack {
+            width: 12px; height: 12px; background-color: var(--rack-empty);
+            border-radius: 2px; transition: all 0.2s; cursor: pointer;
+        }
+        .rack:hover:not(.hidden) { background-color: #999; transform: scale(1.2); }
+        .rack.hidden { visibility: hidden; pointer-events: none; }
+        .row-label { width: 30px; text-align: center; color: var(--primary-red); font-weight: bold; font-size: 12px; }
+
+        /* Navigation Mode Highlight Styles */
+        .map-container.nav-mode .rack:not(.nav-target):not(.hidden) { opacity: 0.3; }
+        .rack.nav-target { 
+            background-color: var(--primary-red) !important; 
+            transform: scale(1.5); z-index: 5;
+            box-shadow: 0 0 10px rgba(204, 0, 0, 0.4);
+        }
+
+        /* Updated Modal matching 10.51.17 exactly */
+        .modal-overlay {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.7); backdrop-filter: blur(2px);
+            justify-content: center; align-items: center; z-index: 20;
+        }
+        .modal-content {
+            background: white; padding: 20px; border-radius: 12px; width: 320px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #eee;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .modal-header h3 { margin: 0; color: var(--primary-red); font-size: 18px; }
+        .close-modal { border:none; background:none; font-size:20px; cursor:pointer; color:#999; }
+        .shelf-info { 
+            padding: 12px; background: #f9f9f9; border-radius: 6px; 
+            margin-bottom: 10px; border-left: 4px solid var(--primary-red); 
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Left Sidebar -->
+    <div class="sidebar">
+        
+        <!-- Setup Panel -->
+        <div id="setupModePanel">
+            <h3>Enter Part Code (SKU):</h3>
+            <div class="search-container">
+                <input type="text" id="partInput" placeholder="e.g. SKU-10045" onkeypress="handleKeyPress(event)">
+                <button onclick="addPart()">Add</button>
+            </div>
+            
+            <h3>Current Pick List:</h3>
+            <div id="pickListContainer" class="pick-list">
+                <p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">List is empty.<br>Add Part SKUs above.</p>
+            </div>
+
+            <button id="startNavBtn" class="start-nav-btn" onclick="startNavigation()">
+                Start Navigation
+            </button>
+        </div>
+
+        <!-- Navigation Panel (Hidden by default) -->
+        <div id="navModePanel">
+            <div class="nav-header">
+                <div class="nav-badge" id="navStepBadge">STEP 1 OF X</div>
+                <div class="nav-target-text" id="navTargetText">Target Rack: --</div>
+            </div>
+            <h2 id="navItemName" class="nav-item-name">Retrieve: --</h2>
+            <p id="navItemSku" class="nav-item-sku">SKU ID: --</p>
+            
+            <div class="nav-controls">
+                <button id="btnNavNext" class="nav-btn btn-next" onclick="navStep(1)">Next Stop</button>
+                <button id="btnNavBack" class="nav-btn btn-back" onclick="navStep(-1)">Back Step</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Right Warehouse Map -->
+    <div class="map-container" id="mapContainer">
+        <div id="gridArea"></div>
+
+        <!-- Clickable Rack Info Modal -->
+        <div class="modal-overlay" id="rackModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modalTitle">Rack K-032</h3>
+                    <button class="close-modal" onclick="closeModal()">✕</button>
+                </div>
+                <div id="modalBody">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let currentPickList = [];
+        let optimizedList = [];
+        const indentedRows = ['B','D','F','H','J','L','N','P','R','T','V','X'];
+
+        // Navigation State
+        let isNavigating = false;
+        let navIndex = 0;
+
+        // 1. Generate the Warehouse Grid
+        function renderGrid() {
+            const container = document.getElementById('gridArea');
+            const rows = 'XWVUTSRQPONMLKJIHGFEDCBA'.split('');
+            
+            rows.forEach(rowLetter => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'warehouse-row';
+                const isIndented = indentedRows.includes(rowLetter);
+                
+                const leftGroup = document.createElement('div');
+                leftGroup.className = 'rack-group';
+                for(let i = 1; i <= 32; i++) {
+                    const colStr = i.toString().padStart(3, '0');
+                    const isHidden = (isIndented && i === 1) ? 'hidden' : '';
+                    leftGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')" title="Row ${rowLetter}, Col ${colStr}"></div>`;
+                }
+
+                const label = document.createElement('div');
+                label.className = 'row-label';
+                label.innerText = rowLetter;
+
+                const rightGroup = document.createElement('div');
+                rightGroup.className = 'rack-group';
+                for(let i = 33; i <= 64; i++) {
+                    const colStr = i.toString().padStart(3, '0');
+                    const isHidden = (isIndented && i === 64) ? 'hidden' : '';
+                    rightGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')" title="Row ${rowLetter}, Col ${colStr}"></div>`;
+                }
+
+                rowDiv.appendChild(leftGroup);
+                rowDiv.appendChild(label);
+                rowDiv.appendChild(rightGroup);
+                container.appendChild(rowDiv);
+            });
+        }
+
+        // 2. Fetch Rack Info (Reverted to Exact Match)
+        async function fetchRackInfo(row, col) {
+            if(isNavigating) return; 
+            
+            document.getElementById('rackModal').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = `Rack ${row}-${col}`;
+            document.getElementById('modalBody').innerHTML = '<i>Fetching inventory...</i>';
+
+            const baseLocator = `CTRA1-${row}-${col}`;
+            const { data, error } = await supabaseClient
+                .from('warehouse_parts')
+                .select('*')
+                .in('locator_id', [`${baseLocator}-1`, `${baseLocator}-2`])
+                .order('locator_id', { ascending: true });
+
+            if (error || !data || data.length === 0) {
+                document.getElementById('modalBody').innerHTML = '<p style="color:#666;">Empty or invalid rack.</p>';
+                return;
+            }
+
+            let html = '';
+            data.forEach(part => {
+                const isTop = part.locator_id.endsWith('-2');
+                html += `
+                    <div class="shelf-info">
+                        <strong style="font-size:15px;">${isTop ? 'Top Shelf' : 'Bottom Shelf'}</strong><br>
+                        <div style="margin-top:4px;">
+                            <span style="font-size:13px; color:#333;"><b>Code:</b> ${part.part_code}</span><br>
+                            <span style="font-size:13px; color:#333;"><b>Name:</b> ${part.part_name}</span><br>
+                            <span style="font-size:13px; color:#999;"><b>Loc:</b> ${part.locator_id}</span>
+                        </div>
+                    </div>`;
+            });
+            document.getElementById('modalBody').innerHTML = html;
+        }
+
+        function closeModal() { document.getElementById('rackModal').style.display = 'none'; }
+
+        // 3. Search and Add Parts
+        function handleKeyPress(e) { if (e.key === 'Enter') addPart(); }
+
+        async function addPart() {
+            const input = document.getElementById('partInput');
+            const partCode = input.value.trim().toUpperCase();
+            if (!partCode) return;
+            if(currentPickList.find(p => p.part_code === partCode)) {
+                alert('SKU already in pick list!'); input.value = ''; return;
+            }
+
+            const { data, error } = await supabaseClient
+                .from('warehouse_parts').select('*').eq('part_code', partCode).single();
+
+            if (error || !data) alert('SKU not found.');
+            else { currentPickList.push(data); input.value = ''; updatePickListUI(); }
+        }
+
+        function removePart(partCode) {
+            currentPickList = currentPickList.filter(p => p.part_code !== partCode);
+            updatePickListUI();
+        }
+
+        function updatePickListUI() {
+            const listContainer = document.getElementById('pickListContainer');
+            const navBtn = document.getElementById('startNavBtn');
+            
+            if(currentPickList.length === 0) {
+                listContainer.innerHTML = '<p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">List is empty.<br>Add Part SKUs above.</p>';
+                navBtn.style.display = 'none';
+                return;
+            }
+
+            navBtn.style.display = 'block';
+            listContainer.innerHTML = '';
+            optimizedList = optimizePath(currentPickList);
+
+            optimizedList.forEach(part => {
+                const item = document.createElement('div');
+                item.className = 'pick-item';
+                item.innerHTML = `
+                    <div class="item-info">
+                        <strong>${part.part_code}</strong><br>
+                        <span style="font-size:12px;color:#666;">${part.part_name}</span>
+                    </div>
+                    <button class="delete-btn" onclick="removePart('${part.part_code}')">✕</button>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        // 4. U-Turn Constraint Routing
+        function getWalkDistance(locA, locB) {
+            if (locA.rowVal === locB.rowVal) {
+                return Math.abs(locA.colVal - locB.colVal);
+            }
+            const verticalCost = Math.abs(locA.rowVal - locB.rowVal) * 2; 
+            const distViaLeftEdge = (locA.colVal - 1) + (locB.colVal - 1) + verticalCost;
+            const distViaRightEdge = (64 - locA.colVal) + (64 - locB.colVal) + verticalCost;
+            return Math.min(distViaLeftEdge, distViaRightEdge);
+        }
+
+        function parseLocator(locator) {
+            const parts = locator.split('-');
+            return {
+                rowStr: parts[1], colStr: parts[2],
+                rowVal: parts[1].charCodeAt(0) - 65,
+                colVal: parseInt(parts[2], 10)
+            };
+        }
+
+        function optimizePath(parts) {
+            if (parts.length === 0) return [];
+            let currentCoords = { rowVal: 0, colVal: 32 }; 
+            let unvisited = [...parts];
+            let optimized = [];
+
+            while(unvisited.length > 0) {
+                unvisited.sort((a, b) => {
+                    const distA = getWalkDistance(currentCoords, parseLocator(a.locator_id));
+                    const distB = getWalkDistance(currentCoords, parseLocator(b.locator_id));
+                    return distA - distB;
+                });
+                const nextPart = unvisited.shift();
+                optimized.push(nextPart);
+                currentCoords = parseLocator(nextPart.locator_id);
+            }
+            return optimized;
+        }
+
+        // 5. UX IMPROVED NAVIGATION LOOP (Sidebar Swap)
+        function startNavigation() {
+            if(optimizedList.length === 0) return;
+            isNavigating = true;
+            navIndex = 0;
+            
+            // Swap sidebar panels
+            document.getElementById('setupModePanel').style.display = 'none';
+            document.getElementById('navModePanel').style.display = 'flex';
+            
+            document.getElementById('mapContainer').classList.add('nav-mode');
+            renderNavStep();
+        }
+
+        function renderNavStep() {
+            document.querySelectorAll('.rack.nav-target').forEach(el => el.classList.remove('nav-target'));
+            
+            const part = optimizedList[navIndex];
+            const loc = parseLocator(part.locator_id);
+            
+            const rackEl = document.getElementById(`rack-${loc.rowStr}-${loc.colStr}`);
+            if(rackEl) rackEl.classList.add('nav-target');
+
+            document.getElementById('navStepBadge').innerText = `STEP ${navIndex + 1} OF ${optimizedList.length}`;
+            document.getElementById('navTargetText').innerText = `Target Rack: ${loc.rowStr}-${loc.colStr}`;
+            document.getElementById('navItemName').innerText = `Retrieve: ${part.part_name}`;
+            document.getElementById('navItemSku').innerText = `SKU ID: ${part.part_code}`;
+
+            document.getElementById('btnNavBack').disabled = (navIndex === 0);
+            document.getElementById('btnNavNext').innerText = (navIndex === optimizedList.length - 1) ? 'Finish Cycle' : 'Next Stop';
+        }
+
+        function navStep(direction) {
+            if (direction === -1 && navIndex > 0) {
+                navIndex--;
+                renderNavStep();
+            } else if (direction === 1) {
+                if (navIndex < optimizedList.length - 1) {
+                    navIndex++;
+                    renderNavStep();
+                } else {
+                    // Finish Cycle and revert UI
+                    isNavigating = false;
+                    document.getElementById('setupModePanel').style.display = 'flex';
+                    document.getElementById('navModePanel').style.display = 'none';
+                    document.getElementById('mapContainer').classList.remove('nav-mode');
+                    document.querySelectorAll('.rack.nav-target').forEach(el => el.classList.remove('nav-target'));
+                    
+                    currentPickList = [];
+                    updatePickListUI();
+                    alert('Pick Cycle Complete! Cart cleared.');
+                }
+            }
+        }
+
+        window.onload = renderGrid;
+    </script>
+</body>
+</html>
