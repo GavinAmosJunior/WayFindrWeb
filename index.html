@@ -12,52 +12,33 @@
             --primary-red: #cc0000;
             --dark-slate: #0F172A;
             --rack-empty: #d1d5db;
+            --path-glow: #2563EB;
         }
         body {
             margin: 0; padding: 20px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
             background-color: var(--bg-color);
-            display: flex; height: 100vh; box-sizing: border-box; gap: 20px;
-            overflow: hidden;
+            display: flex; height: 100vh; box-sizing: border-box; gap: 20px; overflow: hidden;
         }
         
-        /* Sidebar container */
+        /* Sidebar Styles */
         .sidebar {
             width: 320px; background: var(--sidebar-bg); border-radius: 12px;
             padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
-            display: flex; flex-direction: column;
+            display: flex; flex-direction: column; z-index: 20;
         }
-
-        /* --- MODE 1: SETUP PANEL --- */
         #setupModePanel { display: flex; flex-direction: column; flex: 1; }
         .sidebar h3 { color: var(--primary-red); margin-top: 0; font-size: 14px; }
         .search-container { display: flex; gap: 10px; margin-bottom: 30px; }
-        .search-container input {
-            flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; outline: none;
-        }
-        .search-container button {
-            background: var(--primary-red); color: white; border: none;
-            padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;
-        }
-        
+        .search-container input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; }
+        .search-container button { background: var(--primary-red); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
         .pick-list { flex: 1; overflow-y: auto; margin-bottom: 20px; }
-        .pick-item {
-            padding: 12px; border: 1px solid #eee; border-radius: 8px;
-            margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-            display: flex; justify-content: space-between; align-items: flex-start;
-        }
+        .pick-item { padding: 12px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; }
         .item-info strong { color: #1E293B; font-size: 14px; }
-        .delete-btn {
-            background: transparent; color: #ef4444; border: none;
-            cursor: pointer; font-weight: bold; font-size: 18px; padding: 0 5px;
-        }
-        .start-nav-btn {
-            background: var(--dark-slate); color: white; border: none; width: 100%;
-            padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold;
-            font-size: 15px; display: none; box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
-        }
+        .delete-btn { background: transparent; color: #ef4444; border: none; cursor: pointer; font-weight: bold; font-size: 18px; }
+        .start-nav-btn { background: var(--dark-slate); color: white; border: none; width: 100%; padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; display: none; }
 
-        /* --- MODE 2: NAVIGATION PANEL (Replaces Setup Panel) --- */
+        /* Navigation Mode Sidebar */
         #navModePanel { display: none; flex-direction: column; flex: 1; justify-content: center; }
         .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .nav-badge { background: var(--dark-slate); color: white; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; }
@@ -69,65 +50,49 @@
         .btn-next { background: var(--dark-slate); color: white; margin-bottom: 8px;}
         .btn-back { background: transparent; border: 1.5px solid #CBD5E1; color: #475569; }
 
-        /* Map Container - Reverted to exact UI INSPO layout */
+        /* Map Container & Canvas Overlay */
         .map-container {
             flex: 1; background: var(--sidebar-bg); border-radius: 12px;
             padding: 20px; display: flex; flex-direction: column;
             align-items: center; justify-content: center; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            overflow: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); position: relative;
         }
-        #gridArea {
-            display: flex; flex-direction: column; 
-            align-items: center; justify-content: center;
-        }
-        .warehouse-row {
-            display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 6px;
-        }
-        .rack-group { display: flex; gap: 4px; }
         
-        /* Reverted to fixed square dimensions */
-        .rack {
-            width: 12px; height: 12px; background-color: var(--rack-empty);
-            border-radius: 2px; transition: all 0.2s; cursor: pointer;
+        #routeCanvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10;
         }
-        .rack:hover:not(.hidden) { background-color: #999; transform: scale(1.2); }
+
+        #gridArea { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; z-index: 5;}
+        .warehouse-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 6px; width: 100%; }
+        .rack-group { display: flex; gap: 4px; justify-content: center;}
+        .rack { width: 12px; height: 12px; background-color: var(--rack-empty); border-radius: 2px; cursor: pointer; position: relative; }
         .rack.hidden { visibility: hidden; pointer-events: none; }
         .row-label { width: 30px; text-align: center; color: var(--primary-red); font-weight: bold; font-size: 12px; }
 
-        /* Navigation Mode Highlight Styles */
-        .map-container.nav-mode .rack:not(.nav-target):not(.hidden) { opacity: 0.3; }
-        .rack.nav-target { 
-            background-color: var(--primary-red) !important; 
-            transform: scale(1.5); z-index: 5;
-            box-shadow: 0 0 10px rgba(204, 0, 0, 0.4);
+        /* Packing Station Start/End point */
+        #packingStation {
+            width: 120px; height: 30px; background-color: var(--dark-slate); color: white;
+            border-radius: 6px; display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: bold; margin-top: 20px;
         }
 
-        /* Updated Modal matching 10.51.17 exactly */
-        .modal-overlay {
-            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.7); backdrop-filter: blur(2px);
-            justify-content: center; align-items: center; z-index: 20;
-        }
-        .modal-content {
-            background: white; padding: 20px; border-radius: 12px; width: 320px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #eee;
-        }
+        /* Navigating Highlights */
+        .map-container.nav-mode .rack:not(.nav-target):not(.hidden) { opacity: 0.2; }
+        .rack.nav-target { background-color: var(--path-glow) !important; transform: scale(1.5); z-index: 15; box-shadow: 0 0 15px rgba(37, 99, 235, 0.6); }
+
+        /* Modal */
+        .modal-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.7); backdrop-filter: blur(2px); justify-content: center; align-items: center; z-index: 30; }
+        .modal-content { background: white; padding: 20px; border-radius: 12px; width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #eee; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .modal-header h3 { margin: 0; color: var(--primary-red); font-size: 18px; }
         .close-modal { border:none; background:none; font-size:20px; cursor:pointer; color:#999; }
-        .shelf-info { 
-            padding: 12px; background: #f9f9f9; border-radius: 6px; 
-            margin-bottom: 10px; border-left: 4px solid var(--primary-red); 
-        }
+        .shelf-info { padding: 12px; background: #f9f9f9; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid var(--primary-red); }
     </style>
 </head>
 <body>
 
-    <!-- Left Sidebar -->
     <div class="sidebar">
-        
-        <!-- Setup Panel -->
         <div id="setupModePanel">
             <h3>Enter Part Code (SKU):</h3>
             <div class="search-container">
@@ -145,32 +110,32 @@
             </button>
         </div>
 
-        <!-- Navigation Panel (Hidden by default) -->
         <div id="navModePanel">
             <div class="nav-header">
-                <div class="nav-badge" id="navStepBadge">STEP 1 OF X</div>
-                <div class="nav-target-text" id="navTargetText">Target Rack: --</div>
+                <div class="nav-badge" id="navStepBadge">OVERVIEW</div>
+                <div class="nav-target-text" id="navTargetText">Review Full Route</div>
             </div>
-            <h2 id="navItemName" class="nav-item-name">Retrieve: --</h2>
-            <p id="navItemSku" class="nav-item-sku">SKU ID: --</p>
+            <h2 id="navItemName" class="nav-item-name">Warehouse Scan</h2>
+            <p id="navItemSku" class="nav-item-sku">Ready to begin</p>
             
             <div class="nav-controls">
-                <button id="btnNavNext" class="nav-btn btn-next" onclick="navStep(1)">Next Stop</button>
-                <button id="btnNavBack" class="nav-btn btn-back" onclick="navStep(-1)">Back Step</button>
+                <button id="btnNavNext" class="nav-btn btn-next" onclick="navStep(1)">Begin First Pick</button>
+                <button id="btnNavBack" class="nav-btn btn-back" onclick="navStep(-1)" disabled>Cancel</button>
             </div>
         </div>
-
     </div>
 
-    <!-- Right Warehouse Map -->
     <div class="map-container" id="mapContainer">
+        <!-- Canvas Overlay for Google Maps Lines -->
+        <canvas id="routeCanvas"></canvas>
+        
         <div id="gridArea"></div>
+        <div id="packingStation">PACKING STATION</div>
 
-        <!-- Clickable Rack Info Modal -->
         <div class="modal-overlay" id="rackModal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3 id="modalTitle">Rack K-032</h3>
+                    <h3 id="modalTitle">Rack Info</h3>
                     <button class="close-modal" onclick="closeModal()">✕</button>
                 </div>
                 <div id="modalBody">Loading...</div>
@@ -183,15 +148,17 @@
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+        // --- UPDATE THIS URL TO YOUR RENDER APP ---
+        const PYTHON_API_URL = 'https://wayfindrengine.onrender.com';
+
         let currentPickList = [];
-        let optimizedList = [];
+        let routeSequence = []; // Holds the rack DOM IDs in order
         const indentedRows = ['B','D','F','H','J','L','N','P','R','T','V','X'];
 
-        // Navigation State
         let isNavigating = false;
-        let navIndex = 0;
+        let navIndex = -1; // -1 = Overview Mode
 
-        // 1. Generate the Warehouse Grid
+        // 1. Render Grid
         function renderGrid() {
             const container = document.getElementById('gridArea');
             const rows = 'XWVUTSRQPONMLKJIHGFEDCBA'.split('');
@@ -206,7 +173,7 @@
                 for(let i = 1; i <= 32; i++) {
                     const colStr = i.toString().padStart(3, '0');
                     const isHidden = (isIndented && i === 1) ? 'hidden' : '';
-                    leftGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')" title="Row ${rowLetter}, Col ${colStr}"></div>`;
+                    leftGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')"></div>`;
                 }
 
                 const label = document.createElement('div');
@@ -218,7 +185,7 @@
                 for(let i = 33; i <= 64; i++) {
                     const colStr = i.toString().padStart(3, '0');
                     const isHidden = (isIndented && i === 64) ? 'hidden' : '';
-                    rightGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')" title="Row ${rowLetter}, Col ${colStr}"></div>`;
+                    rightGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')"></div>`;
                 }
 
                 rowDiv.appendChild(leftGroup);
@@ -226,188 +193,232 @@
                 rowDiv.appendChild(rightGroup);
                 container.appendChild(rowDiv);
             });
+            
+            // Adjust canvas size on window resize
+            window.addEventListener('resize', () => {
+                if(isNavigating) drawCanvasLines(navIndex);
+            });
         }
 
-        // 2. Fetch Rack Info (Reverted to Exact Match)
+        // 2. Fetch Info & Manage Cart
         async function fetchRackInfo(row, col) {
             if(isNavigating) return; 
-            
             document.getElementById('rackModal').style.display = 'flex';
             document.getElementById('modalTitle').innerText = `Rack ${row}-${col}`;
-            document.getElementById('modalBody').innerHTML = '<i>Fetching inventory...</i>';
+            document.getElementById('modalBody').innerHTML = '<i>Fetching...</i>';
 
-            const baseLocator = `CTRA1-${row}-${col}`;
             const { data, error } = await supabaseClient
-                .from('warehouse_parts')
-                .select('*')
-                .in('locator_id', [`${baseLocator}-1`, `${baseLocator}-2`])
-                .order('locator_id', { ascending: true });
+                .from('warehouse_parts').select('*').in('locator_id', [`CTRA1-${row}-${col}-1`, `CTRA1-${row}-${col}-2`]).order('locator_id', { ascending: true });
 
-            if (error || !data || data.length === 0) {
-                document.getElementById('modalBody').innerHTML = '<p style="color:#666;">Empty or invalid rack.</p>';
-                return;
-            }
+            if (error || !data || data.length === 0) { document.getElementById('modalBody').innerHTML = '<p>Empty Rack</p>'; return; }
 
             let html = '';
             data.forEach(part => {
-                const isTop = part.locator_id.endsWith('-2');
-                html += `
-                    <div class="shelf-info">
-                        <strong style="font-size:15px;">${isTop ? 'Top Shelf' : 'Bottom Shelf'}</strong><br>
-                        <div style="margin-top:4px;">
-                            <span style="font-size:13px; color:#333;"><b>Code:</b> ${part.part_code}</span><br>
-                            <span style="font-size:13px; color:#333;"><b>Name:</b> ${part.part_name}</span><br>
-                            <span style="font-size:13px; color:#999;"><b>Loc:</b> ${part.locator_id}</span>
-                        </div>
-                    </div>`;
+                html += `<div class="shelf-info"><strong>${part.locator_id.endsWith('-2') ? 'Top' : 'Bottom'} Shelf</strong><br><span style="font-size:13px;"><b>Code:</b> ${part.part_code}<br><b>Name:</b> ${part.part_name}</span></div>`;
             });
             document.getElementById('modalBody').innerHTML = html;
         }
 
         function closeModal() { document.getElementById('rackModal').style.display = 'none'; }
-
-        // 3. Search and Add Parts
         function handleKeyPress(e) { if (e.key === 'Enter') addPart(); }
 
         async function addPart() {
             const input = document.getElementById('partInput');
             const partCode = input.value.trim().toUpperCase();
             if (!partCode) return;
-            if(currentPickList.find(p => p.part_code === partCode)) {
-                alert('SKU already in pick list!'); input.value = ''; return;
-            }
+            if(currentPickList.find(p => p.part_code === partCode)) { alert('Added already!'); input.value = ''; return; }
 
-            const { data, error } = await supabaseClient
-                .from('warehouse_parts').select('*').eq('part_code', partCode).single();
-
+            const { data, error } = await supabaseClient.from('warehouse_parts').select('*').eq('part_code', partCode).single();
             if (error || !data) alert('SKU not found.');
             else { currentPickList.push(data); input.value = ''; updatePickListUI(); }
         }
 
-        function removePart(partCode) {
-            currentPickList = currentPickList.filter(p => p.part_code !== partCode);
-            updatePickListUI();
-        }
+        function removePart(code) { currentPickList = currentPickList.filter(p => p.part_code !== code); updatePickListUI(); }
 
         function updatePickListUI() {
-            const listContainer = document.getElementById('pickListContainer');
-            const navBtn = document.getElementById('startNavBtn');
-            
+            const list = document.getElementById('pickListContainer');
+            const btn = document.getElementById('startNavBtn');
             if(currentPickList.length === 0) {
-                listContainer.innerHTML = '<p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">List is empty.<br>Add Part SKUs above.</p>';
-                navBtn.style.display = 'none';
-                return;
+                list.innerHTML = '<p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">List is empty.</p>';
+                btn.style.display = 'none'; return;
             }
-
-            navBtn.style.display = 'block';
-            listContainer.innerHTML = '';
-            optimizedList = optimizePath(currentPickList);
-
-            optimizedList.forEach(part => {
-                const item = document.createElement('div');
-                item.className = 'pick-item';
-                item.innerHTML = `
-                    <div class="item-info">
-                        <strong>${part.part_code}</strong><br>
-                        <span style="font-size:12px;color:#666;">${part.part_name}</span>
-                    </div>
-                    <button class="delete-btn" onclick="removePart('${part.part_code}')">✕</button>
-                `;
-                listContainer.appendChild(item);
+            btn.style.display = 'block'; list.innerHTML = '';
+            currentPickList.forEach(part => {
+                list.innerHTML += `<div class="pick-item"><div><strong>${part.part_code}</strong><br><span style="font-size:12px;color:#666;">${part.part_name}</span></div><button class="delete-btn" onclick="removePart('${part.part_code}')">✕</button></div>`;
             });
         }
 
-        // 4. U-Turn Constraint Routing
-        function getWalkDistance(locA, locB) {
-            if (locA.rowVal === locB.rowVal) {
-                return Math.abs(locA.colVal - locB.colVal);
-            }
-            const verticalCost = Math.abs(locA.rowVal - locB.rowVal) * 2; 
-            const distViaLeftEdge = (locA.colVal - 1) + (locB.colVal - 1) + verticalCost;
-            const distViaRightEdge = (64 - locA.colVal) + (64 - locB.colVal) + verticalCost;
-            return Math.min(distViaLeftEdge, distViaRightEdge);
-        }
+        // 3. Start Navigation via Python API
+        async function startNavigation() {
+            const btn = document.getElementById('startNavBtn');
+            btn.disabled = true; btn.innerText = 'Calculating A*...';
 
-        function parseLocator(locator) {
-            const parts = locator.split('-');
-            return {
-                rowStr: parts[1], colStr: parts[2],
-                rowVal: parts[1].charCodeAt(0) - 65,
-                colVal: parseInt(parts[2], 10)
-            };
-        }
-
-        function optimizePath(parts) {
-            if (parts.length === 0) return [];
-            let currentCoords = { rowVal: 0, colVal: 32 }; 
-            let unvisited = [...parts];
-            let optimized = [];
-
-            while(unvisited.length > 0) {
-                unvisited.sort((a, b) => {
-                    const distA = getWalkDistance(currentCoords, parseLocator(a.locator_id));
-                    const distB = getWalkDistance(currentCoords, parseLocator(b.locator_id));
-                    return distA - distB;
+            try {
+                const response = await fetch(`${PYTHON_API_URL}/api/optimize`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ locators: currentPickList.map(i => i.locator_id) })
                 });
-                const nextPart = unvisited.shift();
-                optimized.push(nextPart);
-                currentCoords = parseLocator(nextPart.locator_id);
+                const result = await response.json();
+                
+                // Construct the full node sequence array: [Packing, Rack1, Rack2..., Packing]
+                routeSequence = ['packingStation'];
+                result.optimized_sequence.forEach(loc => {
+                    const parts = loc.split('-');
+                    routeSequence.push(`rack-${parts[1]}-${parts[2]}`);
+                });
+                routeSequence.push('packingStation');
+
+                isNavigating = true;
+                navIndex = -1; // Trigger Overview Mode
+                
+                document.getElementById('setupModePanel').style.display = 'none';
+                document.getElementById('navModePanel').style.display = 'flex';
+                document.getElementById('mapContainer').classList.add('nav-mode');
+                
+                updateNavUI();
+                drawCanvasLines(-1);
+
+            } catch (err) {
+                alert('API Error. Ensure Python backend is running.');
+            } finally {
+                btn.disabled = false; btn.innerText = 'Start Navigation';
             }
-            return optimized;
         }
 
-        // 5. UX IMPROVED NAVIGATION LOOP (Sidebar Swap)
-        function startNavigation() {
-            if(optimizedList.length === 0) return;
-            isNavigating = true;
-            navIndex = 0;
-            
-            // Swap sidebar panels
-            document.getElementById('setupModePanel').style.display = 'none';
-            document.getElementById('navModePanel').style.display = 'flex';
-            
-            document.getElementById('mapContainer').classList.add('nav-mode');
-            renderNavStep();
-        }
-
-        function renderNavStep() {
+        // 4. Update Sidebar UI
+        function updateNavUI() {
             document.querySelectorAll('.rack.nav-target').forEach(el => el.classList.remove('nav-target'));
             
-            const part = optimizedList[navIndex];
-            const loc = parseLocator(part.locator_id);
-            
-            const rackEl = document.getElementById(`rack-${loc.rowStr}-${loc.colStr}`);
-            if(rackEl) rackEl.classList.add('nav-target');
+            const btnNext = document.getElementById('btnNavNext');
+            const btnBack = document.getElementById('btnNavBack');
 
-            document.getElementById('navStepBadge').innerText = `STEP ${navIndex + 1} OF ${optimizedList.length}`;
-            document.getElementById('navTargetText').innerText = `Target Rack: ${loc.rowStr}-${loc.colStr}`;
-            document.getElementById('navItemName').innerText = `Retrieve: ${part.part_name}`;
-            document.getElementById('navItemSku').innerText = `SKU ID: ${part.part_code}`;
+            if (navIndex === -1) {
+                // Overview Mode
+                document.getElementById('navStepBadge').innerText = `OVERVIEW`;
+                document.getElementById('navTargetText').innerText = `Total Stops: ${routeSequence.length - 2}`;
+                document.getElementById('navItemName').innerText = `Route Generated`;
+                document.getElementById('navItemSku').innerText = `Review the map, then begin.`;
+                btnNext.innerText = 'Begin Pick 1';
+                btnBack.innerText = 'Cancel';
+                btnBack.disabled = false;
+            } else if (navIndex === routeSequence.length - 2) {
+                // Final Return Leg
+                document.getElementById('navStepBadge').innerText = `FINAL RETURN`;
+                document.getElementById('navTargetText').innerText = `Target: Packing Station`;
+                document.getElementById('navItemName').innerText = `Drop Off Parts`;
+                document.getElementById('navItemSku').innerText = `Task Complete`;
+                btnNext.innerText = 'Finish Cycle';
+                btnBack.innerText = 'Back Step';
+            } else {
+                // Active Checkpoint
+                const rackId = routeSequence[navIndex + 1];
+                document.getElementById(rackId).classList.add('nav-target');
+                
+                // Find part details
+                const locMatch = rackId.replace('rack-', '');
+                const part = currentPickList.find(p => p.locator_id.includes(locMatch));
 
-            document.getElementById('btnNavBack').disabled = (navIndex === 0);
-            document.getElementById('btnNavNext').innerText = (navIndex === optimizedList.length - 1) ? 'Finish Cycle' : 'Next Stop';
+                document.getElementById('navStepBadge').innerText = `STEP ${navIndex + 1} OF ${routeSequence.length - 2}`;
+                document.getElementById('navTargetText').innerText = `Target Rack: ${locMatch}`;
+                document.getElementById('navItemName').innerText = `Retrieve: ${part.part_name}`;
+                document.getElementById('navItemSku').innerText = `SKU ID: ${part.part_code}`;
+                btnNext.innerText = 'Next Stop';
+                btnBack.innerText = 'Back Step';
+            }
         }
 
         function navStep(direction) {
-            if (direction === -1 && navIndex > 0) {
-                navIndex--;
-                renderNavStep();
-            } else if (direction === 1) {
-                if (navIndex < optimizedList.length - 1) {
-                    navIndex++;
-                    renderNavStep();
-                } else {
-                    // Finish Cycle and revert UI
-                    isNavigating = false;
-                    document.getElementById('setupModePanel').style.display = 'flex';
-                    document.getElementById('navModePanel').style.display = 'none';
-                    document.getElementById('mapContainer').classList.remove('nav-mode');
-                    document.querySelectorAll('.rack.nav-target').forEach(el => el.classList.remove('nav-target'));
-                    
-                    currentPickList = [];
-                    updatePickListUI();
-                    alert('Pick Cycle Complete! Cart cleared.');
+            if (navIndex === -1 && direction === -1) {
+                // Cancel from Overview
+                endNavigation();
+                return;
+            }
+
+            navIndex += direction;
+
+            if (navIndex >= routeSequence.length - 1) {
+                // Finish Cycle
+                endNavigation();
+                alert('Cycle Complete! Cart cleared.');
+                currentPickList = [];
+                updatePickListUI();
+            } else {
+                updateNavUI();
+                drawCanvasLines(navIndex);
+            }
+        }
+
+        function endNavigation() {
+            isNavigating = false;
+            document.getElementById('setupModePanel').style.display = 'flex';
+            document.getElementById('navModePanel').style.display = 'none';
+            document.getElementById('mapContainer').classList.remove('nav-mode');
+            document.querySelectorAll('.rack.nav-target').forEach(el => el.classList.remove('nav-target'));
+            const canvas = document.getElementById('routeCanvas');
+            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // 5. Google Maps Style Canvas Drawer
+        function drawCanvasLines(activeStep) {
+            const canvas = document.getElementById('routeCanvas');
+            const container = document.getElementById('mapContainer');
+            
+            // Resize canvas to exactly match the container
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const getCenter = (id) => {
+                const el = document.getElementById(id);
+                if (!el) return null;
+                const rect = el.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                return {
+                    x: (rect.left - containerRect.left) + (rect.width / 2),
+                    y: (rect.top - containerRect.top) + (rect.height / 2)
+                };
+            };
+
+            const drawSegment = (id1, id2, isGlowing) => {
+                const p1 = getCenter(id1);
+                const p2 = getCenter(id2);
+                if (!p1 || !p2) return;
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+
+                // U-Turn Logic: If Y difference is large (different rows), route to edges
+                if (Math.abs(p1.y - p2.y) > 20 && id1 !== 'packingStation' && id2 !== 'packingStation') {
+                    // Decide nearest edge (left or right padding area)
+                    const edgeX = (p1.x + p2.x) / 2 < (canvas.width / 2) ? 40 : canvas.width - 40;
+                    ctx.lineTo(edgeX, p1.y);
+                    ctx.lineTo(edgeX, p2.y);
                 }
+                
+                ctx.lineTo(p2.x, p2.y);
+
+                if (isGlowing) {
+                    ctx.strokeStyle = '#2563EB'; // Bright Blue
+                    ctx.lineWidth = 4;
+                    ctx.shadowColor = 'rgba(37, 99, 235, 0.8)';
+                    ctx.shadowBlur = 10;
+                } else {
+                    ctx.strokeStyle = 'rgba(37, 99, 235, 0.2)'; // Dim Overview Blue
+                    ctx.lineWidth = 2;
+                    ctx.shadowBlur = 0;
+                }
+                ctx.stroke();
+            };
+
+            if (activeStep === -1) {
+                // Overview Mode: Draw all segments dim
+                for (let i = 0; i < routeSequence.length - 1; i++) {
+                    drawSegment(routeSequence[i], routeSequence[i+1], false);
+                }
+            } else {
+                // Checkpoint Mode: Draw ONLY the active segment glowing
+                drawSegment(routeSequence[activeStep], routeSequence[activeStep+1], true);
             }
         }
 
