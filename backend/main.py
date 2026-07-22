@@ -95,53 +95,54 @@ class WarehouseEngine:
         return [], float('inf')
 
     def optimize_sequence(self, locators: List[str]):
-        if not locators: return [], []
+        if not locators: 
+            return [], []
 
-        nodes = ['Entrance'] + locators
-        access_map = {'Entrance': [self.entrance_coord]}
-        for loc in locators:
-            access_map[loc] = self.get_access_points(loc)
+        nodes = locators
+        best_overall_cost = float('inf')
+        best_overall_sequence = []
+        best_overall_legs = []
 
-        # Build Cost and Path Matrix
-        cost_matrix = {n1: {} for n1 in nodes}
-        path_matrix = {n1: {} for n1 in nodes}
-        
-        for n1 in nodes:
-            for n2 in nodes:
-                if n1 == n2:
-                    cost_matrix[n1][n2], path_matrix[n1][n2] = 0, []
-                else:
-                    best_cost, best_path = float('inf'), []
-                    # Find shortest route between any valid access points of the two racks
-                    for a1 in access_map[n1]:
-                        for a2 in access_map[n2]:
-                            path, cost = self.a_star(a1, a2)
-                            if cost < best_cost:
-                                best_cost, best_path = cost, path
-                    cost_matrix[n1][n2], path_matrix[n1][n2] = best_cost, best_path
-
-        # Find Optimal TSP Sequence
-        best_sequence = None
-        lowest_cost = float('inf')
-
-        for perm in permutations(locators):
-            current_cost = cost_matrix['Entrance'][perm[0]]
-            for i in range(len(perm) - 1):
-                current_cost += cost_matrix[perm[i]][perm[i+1]]
-            current_cost += cost_matrix[perm[-1]]['Entrance']
+        for perm in permutations(nodes):
+            current_states = [(self.entrance_coord, 0, [])]
             
-            if current_cost < lowest_cost:
-                lowest_cost = current_cost
-                best_sequence = perm
+            for loc in perm:
+                next_states = []
+                acc_points = self.get_access_points(loc)
+                
+                for target_acc in acc_points:
+                    best_step_cost = float('inf')
+                    best_step_leg = []
+                    best_prev_state = None
+                    
+                    for prev_coord, prev_cost, prev_legs in current_states:
+                        path, cost = self.a_star(prev_coord, target_acc)
+                        if cost < best_step_cost:
+                            best_step_cost = cost
+                            best_step_leg = path
+                            best_prev_state = (prev_coord, prev_cost, prev_legs)
+                    
+                    prev_coord, prev_cost, prev_legs = best_prev_state
+                    next_states.append((
+                        target_acc, 
+                        prev_cost + best_step_cost, 
+                        prev_legs + [best_step_leg]
+                    ))
+                
+                current_states = next_states
 
-        # Break the final path down into separated checkpoints/legs for the UI
-        path_legs = []
-        path_legs.append(path_matrix['Entrance'][best_sequence[0]])
-        for i in range(len(best_sequence) - 1):
-            path_legs.append(path_matrix[best_sequence[i]][best_sequence[i+1]])
-        path_legs.append(path_matrix[best_sequence[-1]]['Entrance'])
+            # Return back to Packing Station (33, 0)
+            for prev_coord, prev_cost, prev_legs in current_states:
+                path, cost = self.a_star(prev_coord, self.entrance_coord)
+                total_cost = prev_cost + cost
+                total_legs = prev_legs + [path]
+                
+                if total_cost < best_overall_cost:
+                    best_overall_cost = total_cost
+                    best_overall_sequence = perm
+                    best_overall_legs = total_legs
 
-        return list(best_sequence), path_legs
+        return list(best_overall_sequence), best_overall_legs
 
 engine = WarehouseEngine()
 
@@ -155,7 +156,6 @@ def optimize_route(req: OptimizationRequest):
     
     sequence, legs = engine.optimize_sequence(base_locators)
     
-    # Convert tuples back to JSON-friendly dicts
     formatted_legs = [[{"x": pt[0], "y": pt[1]} for pt in leg] for leg in legs]
     
     return {
