@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PickPath AI - Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --bg-color: #f4f5f7; --card-bg: #ffffff; --primary-red: #cc0000; --dark-slate: #0F172A; --text-main: #1E293B; --text-muted: #64748B; }
+        body { margin: 0; padding: 30px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); color: var(--text-main); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .header h1 { margin: 0; color: var(--dark-slate); font-size: 28px; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 24px; }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+        .card h2 { margin-top: 0; font-size: 18px; color: var(--primary-red); border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; }
+        
+        button { width: 100%; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: bold; margin-bottom: 12px; cursor: pointer;}
+        
+        .toy-checkbox-container { max-height: 150px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; margin-bottom: 12px; background: white; }
+        .toy-label { display: block; margin-bottom: 8px; cursor: pointer; font-size: 14px; }
+        
+        .btn-add { background: var(--dark-slate); color: white; border: none; }
+        .btn-assign { background: var(--primary-red); color: white; border: none; margin-top: auto; }
+        
+        .list-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .list-item { padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .toy-name { font-weight: bold; font-size: 14px; }
+        .btn-remove { background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; width: auto; margin:0;}
+        
+        .worker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .worker-card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
+        .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; align-self: center; }
+        .status-idle { background: #dcfce7; color: #166534; }
+        .status-active { background: #dbeafe; color: #1e40af; }
+        .worker-task { font-size: 13px; color: var(--text-muted); min-height: 20px; }
+        .btn-cancel { background: #fef2f2; color: #ef4444; border: none; padding: 6px; font-size: 11px; border-radius: 6px; margin: 0; width: 100%;}
+    </style>
+</head>
+<body>
+    <div class="header"><h1>Admin Dashboard</h1></div>
+    <div class="dashboard-grid">
+        
+        <div class="card">
+            <h2>1. Create Order</h2>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Check the boxes for the toys you want to queue.</p>
+            <div id="toyCheckboxes" class="toy-checkbox-container"><i>Loading toys...</i></div>
+            <button class="btn-add" onclick="queueOrder()">Add Selection to Queue</button>
+        </div>
+
+        <div class="card">
+            <h2>2. Pending Queue</h2>
+            <div class="list-container" id="pendingQueueList"></div>
+            <button class="btn-assign" onclick="autoAssignTasks()" style="margin-top: 20px;">Assign ALL to Idle Workers</button>
+        </div>
+
+        <div class="card">
+            <h2>3. Live Worker Status</h2>
+            <div class="worker-grid" id="workerGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let toys = []; let pendingTasks = []; let workers = [];
+
+        async function initDashboard() {
+            await fetchToys(); await fetchState();
+            setInterval(fetchState, 3000); 
+        }
+
+        async function fetchToys() {
+            const { data } = await supabaseClient.from('preset_toys').select('*');
+            toys = data || [];
+            const container = document.getElementById('toyCheckboxes');
+            container.innerHTML = ''; 
+            toys.forEach(toy => {
+                container.innerHTML += `<label class="toy-label"><input type="checkbox" value="${toy.id}" class="toy-checkbox" style="margin-right: 8px;">${toy.toy_name}</label>`;
+            });
+        }
+
+        async function fetchState() {
+            const { data: tasks } = await supabaseClient.from('tasks').select('id, toy_id, preset_toys(toy_name)').eq('status', 'Pending').order('created_at', { ascending: true });
+            pendingTasks = tasks || []; renderQueue();
+
+            const { data: workerData } = await supabaseClient.from('workers').select('id, worker_name, status').order('id', { ascending: true });
+            for (let w of (workerData || [])) {
+                if (w.status === 'Active') {
+                    const { data: activeTask } = await supabaseClient.from('tasks').select('id, preset_toys(toy_name)').eq('worker_id', w.id).eq('status', 'In Progress').single();
+                    w.currentTaskName = activeTask ? activeTask.preset_toys.toy_name : 'Unknown Task';
+                    w.currentTaskId = activeTask ? activeTask.id : null;
+                }
+            }
+            workers = workerData || []; renderWorkers();
+        }
+
+        async function queueOrder() {
+            const checkboxes = document.querySelectorAll('.toy-checkbox:checked');
+            const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+            if (selectedIds.length === 0) return alert('Please select at least one toy.');
+            const inserts = selectedIds.map(id => ({ toy_id: id }));
+            await supabaseClient.from('tasks').insert(inserts);
+            checkboxes.forEach(cb => cb.checked = false); 
+            fetchState();
+        }
+
+        async function autoAssignTasks() {
+            if (pendingTasks.length === 0) return alert('Queue is empty!');
+            const idleWorkers = workers.filter(w => w.status === 'Idle');
+            if (idleWorkers.length === 0) return alert('No idle workers available.');
+
+            let matchCount = Math.min(pendingTasks.length, idleWorkers.length);
+            for (let i = 0; i < matchCount; i++) {
+                await supabaseClient.from('tasks').update({ status: 'In Progress', worker_id: idleWorkers[i].id }).eq('id', pendingTasks[i].id);
+                await supabaseClient.from('workers').update({ status: 'Active' }).eq('id', idleWorkers[i].id);
+            }
+            fetchState();
+        }
+
+        // NEW: Task Deletion & Cancellation
+        async function removeTask(taskId) {
+            await supabaseClient.from('tasks').delete().eq('id', taskId);
+            fetchState();
+        }
+
+        async function cancelWorkerTask(workerId, taskId) {
+            await supabaseClient.from('tasks').update({ status: 'Pending', worker_id: null }).eq('id', taskId);
+            await supabaseClient.from('workers').update({ status: 'Idle' }).eq('id', workerId);
+            fetchState();
+        }
+
+        function renderQueue() {
+            const list = document.getElementById('pendingQueueList');
+            if (pendingTasks.length === 0) { list.innerHTML = '<div style="color:var(--text-muted); text-align:center; margin-top:20px; font-size:14px;">Queue is empty.</div>'; return; }
+            list.innerHTML = pendingTasks.map(t => `
+                <div class="list-item">
+                    <div>
+                        <div class="toy-name">${t.preset_toys.toy_name}</div>
+                        <div style="font-size:11px; color:#999; margin-top:4px;">Task ID: #${t.id}</div>
+                    </div>
+                    <button class="btn-remove" onclick="removeTask(${t.id})">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        function renderWorkers() {
+            const grid = document.getElementById('workerGrid');
+            grid.innerHTML = workers.map(w => {
+                const isActive = w.status === 'Active';
+                return `
+                <div class="worker-card">
+                    <strong>${w.worker_name}</strong>
+                    <div class="status-badge ${isActive ? 'status-active' : 'status-idle'}">${w.status}</div>
+                    <div class="worker-task">${isActive ? `Picking: ${w.currentTaskName}` : 'Waiting...'}</div>
+                    ${isActive ? `<button class="btn-cancel" onclick="cancelWorkerTask(${w.id}, ${w.currentTaskId})">Cancel Assignment</button>` : ''}
+                </div>
+            `}).join('');
+        }
+        window.onload = initDashboard;
+    </script>
+</body>
+</html>

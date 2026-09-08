@@ -3,44 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PickPath AI - Rigid Orthogonal Navigation</title>
+    <title>PickPath AI - Enhanced Worker Navigation</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root {
-            --bg-color: #f4f5f7;
-            --sidebar-bg: #ffffff;
-            --primary-red: #cc0000;
-            --dark-slate: #0F172A;
-            --rack-empty: #d1d5db;
-        }
-        body {
-            margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background-color: var(--bg-color); display: flex; height: 100vh; box-sizing: border-box; gap: 20px; overflow: hidden;
-        }
+        :root { --bg-color: #f4f5f7; --sidebar-bg: #ffffff; --primary-blue: #2563EB; --dark-slate: #0F172A; --rack-empty: #d1d5db; }
+        body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); display: flex; height: 100vh; box-sizing: border-box; gap: 20px; overflow: hidden; }
         
-        /* Sidebar Styles */
-        .sidebar { width: 320px; background: var(--sidebar-bg); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; z-index: 20; }
+        .sidebar { width: 340px; background: var(--sidebar-bg); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; z-index: 20; position: relative;}
         #setupModePanel { display: flex; flex-direction: column; flex: 1; }
-        .sidebar h3 { color: var(--primary-red); margin-top: 0; font-size: 14px; }
-        .search-container { display: flex; gap: 10px; margin-bottom: 30px; }
-        .search-container input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; }
-        .search-container button { background: var(--primary-red); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .sidebar h3 { color: var(--dark-slate); margin-top: 0; font-size: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;}
+        select { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; font-weight: bold; margin-bottom: 20px; outline: none; cursor: pointer; }
+        
+        .task-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: none; }
+        .task-card h4 { margin: 0 0 5px 0; color: var(--primary-blue); font-size: 14px; }
+        .task-card p { margin: 0; font-size: 16px; font-weight: bold; color: var(--dark-slate); }
+        .est-badge { display: inline-block; background: #d1fae5; color: #059669; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-top: 8px;}
+
         .pick-list { flex: 1; overflow-y: auto; margin-bottom: 20px; }
-        .pick-item { padding: 12px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; }
-        .item-info strong { color: #1E293B; font-size: 14px; }
-        .delete-btn { background: transparent; color: #ef4444; border: none; cursor: pointer; font-weight: bold; font-size: 18px; }
+        .pick-item { padding: 12px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; cursor: pointer; transition: 0.2s;}
+        .pick-item:hover { border-color: #a855f7; background: #faf5ff; }
+
         .start-nav-btn { background: var(--dark-slate); color: white; border: none; width: 100%; padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; display: none; }
 
-        /* Navigation Mode Sidebar */
+        /* Navigation Mode */
         #navModePanel { display: none; flex-direction: column; flex: 1; justify-content: center; }
         .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .nav-badge { background: var(--dark-slate); color: white; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; }
         .nav-target-text { color: #64748B; font-weight: bold; font-size: 14px; }
-        .nav-item-name { color: #1E293B; font-size: 22px; margin: 0 0 8px 0; font-weight: bold; line-height: 1.2; }
-        .nav-item-sku { color: var(--primary-red); font-size: 14px; margin: 0 0 30px 0; font-weight: 600; }
+        
+        .nav-item-name { color: #1E293B; font-size: 20px; margin: 0 0 4px 0; font-weight: bold; line-height: 1.2; }
+        .nav-item-sku { color: var(--primary-blue); font-size: 14px; margin: 0 0 15px 0; font-weight: 600; }
+        
+        /* Text Instructions */
+        .text-instructions { background: #eff6ff; border-left: 4px solid var(--primary-blue); padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; color: #1e3a8a; line-height: 1.5; font-weight: 500;}
+
+        /* Barcode Scanner UI */
+        #reader-container { display: none; margin-bottom: 10px; border: 2px solid var(--primary-blue); border-radius: 8px; overflow: hidden; background: #000; }
+        .scan-btn { background: #10B981; color: white; border: none; width: 100%; padding: 14px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; margin-bottom: 8px; }
+        .scan-feedback { font-weight: bold; font-size: 13px; text-align: center; margin-bottom: 15px; display: none; padding: 8px; border-radius: 6px; }
+        .feedback-success { color: #065f46; background: #d1fae5; }
+        .feedback-error { color: #991b1b; background: #fee2e2; animation: shake 0.4s; }
+
+        @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+
         .nav-controls { display: flex; gap: 12px; flex-direction: column; }
         .nav-btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 15px; border: none; }
-        .btn-next { background: var(--dark-slate); color: white; margin-bottom: 8px;}
+        .btn-next { background: var(--dark-slate); color: white; margin-bottom: 8px; display: none; } 
         .btn-back { background: transparent; border: 1.5px solid #CBD5E1; color: #475569; }
 
         /* Map Container */
@@ -49,36 +58,40 @@
         #gridArea { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; z-index: 5;}
         .warehouse-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 6px; width: 100%; }
         .rack-group { display: flex; gap: 4px; justify-content: center;}
-        .rack { width: 12px; height: 12px; background-color: var(--rack-empty); border-radius: 2px; cursor: pointer; position: relative; }
+        .rack { width: 12px; height: 12px; background-color: var(--rack-empty); border-radius: 2px; position: relative; }
         .rack.hidden { visibility: hidden; pointer-events: none; }
-        .row-label { width: 30px; text-align: center; color: var(--primary-red); font-weight: bold; font-size: 12px; }
-
+        .row-label { width: 30px; text-align: center; color: var(--primary-blue); font-weight: bold; font-size: 12px; }
         #packingStation { width: 120px; height: 30px; background-color: var(--dark-slate); color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; margin-top: 20px; z-index: 5;}
         
-        .map-container.nav-mode .rack:not(.nav-target):not(.hidden) { opacity: 0.2; }
+        /* Highlight States */
+        .map-container.nav-mode .rack:not(.nav-target):not(.overview-target):not(.preview-target):not(.hidden) { opacity: 0.15; }
         .rack.nav-target { background-color: #2563EB !important; transform: scale(1.5); z-index: 15; box-shadow: 0 0 15px rgba(37, 99, 235, 0.6); }
-
-        .modal-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.7); backdrop-filter: blur(2px); justify-content: center; align-items: center; z-index: 30; }
-        .modal-content { background: white; padding: 20px; border-radius: 12px; width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #eee; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .modal-header h3 { margin: 0; color: var(--primary-red); font-size: 18px; }
-        .close-modal { border:none; background:none; font-size:20px; cursor:pointer; color:#999; }
-        .shelf-info { padding: 12px; background: #f9f9f9; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid var(--primary-red); }
+        .rack.preview-target { background-color: #a855f7 !important; transform: scale(1.5); z-index: 15; box-shadow: 0 0 15px rgba(168, 85, 247, 0.6); }
+        
+        /* Overview Numbered Badges */
+        .rack.overview-target { background-color: #10B981 !important; transform: scale(1.3); z-index: 15; }
+        .rack.overview-target::after { content: attr(data-stop); position: absolute; top: -14px; left: -4px; background: var(--dark-slate); color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
 <body>
 
     <div class="sidebar">
         <div id="setupModePanel">
-            <h3>Enter Part Code (SKU):</h3>
-            <div class="search-container">
-                <input type="text" id="partInput" placeholder="e.g. SKU-10045" onkeypress="handleKeyPress(event)">
-                <button onclick="addPart()">Add</button>
-            </div>
+            <h3>1. Active Workers</h3>
+            <select id="workerSelect" onchange="fetchWorkerTask()">
+                <option value="" disabled selected>Loading active workers...</option>
+            </select>
             
-            <h3>Current Pick List:</h3>
+            <div id="taskCard" class="task-card">
+                <h4>ACTIVE ASSIGNMENT</h4>
+                <p id="taskToyName">--</p>
+                <div class="est-badge" id="estTimeBadge">--</div>
+            </div>
+
+            <h3 style="margin-top: 10px;">2. Pick List Preview</h3>
+            <p style="font-size:12px; color:#64748B; margin-top:-5px;">Click an item to highlight its location.</p>
             <div id="pickListContainer" class="pick-list">
-                <p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">List is empty.<br>Add Part SKUs above.</p>
+                <p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">Select an active profile.</p>
             </div>
             <button id="startNavBtn" class="start-nav-btn" onclick="startNavigation()">Start Navigation</button>
         </div>
@@ -90,8 +103,15 @@
             </div>
             <h2 id="navItemName" class="nav-item-name">Warehouse Scan</h2>
             <p id="navItemSku" class="nav-item-sku">Ready to begin</p>
+            
+            <div id="textInstructions" class="text-instructions" style="display:none;"></div>
+
+            <div id="reader-container"><div id="reader"></div></div>
+            <button id="btnScan" class="scan-btn" onclick="startScanner()" style="display:none;">Scan Part Barcode</button>
+            <div id="scanFeedback" class="scan-feedback"></div>
+
             <div class="nav-controls">
-                <button id="btnNavNext" class="nav-btn btn-next" onclick="navStep(1)">Begin First Pick</button>
+                <button id="btnNavNext" class="nav-btn btn-next" onclick="navStep(1)" style="display:block;">Begin First Pick</button>
                 <button id="btnNavBack" class="nav-btn btn-back" onclick="navStep(-1)" disabled>Cancel</button>
             </div>
         </div>
@@ -101,123 +121,97 @@
         <canvas id="routeCanvas"></canvas>
         <div id="gridArea"></div>
         <div id="packingStation">PACKING STATION</div>
-        
-        <div class="modal-overlay" id="rackModal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 id="modalTitle">Rack Info</h3>
-                    <button class="close-modal" onclick="closeModal()">✕</button>
-                </div>
-                <div id="modalBody">Loading...</div>
-            </div>
-        </div>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        // --- IMPORTANT: Update this to your deployed Render URL ---
         const PYTHON_API_URL = 'https://wayfindrengine.onrender.com';
 
         let currentPickList = [];
         let routeSequence = []; 
-        let pathLegs = []; // Stores exact orthogonal coordinates from A*
+        let pathLegs = [];
+        let currentTaskId = null;
+        let currentWorkerId = null;
+        let currentExpectedSku = "";
+        
+        let scannedSteps = new Set(); // Stores the indices of items already scanned
         
         const indentedRows = ['B','D','F','H','J','L','N','P','R','T','V','X'];
         let isNavigating = false;
         let navIndex = -1; 
+        let html5QrCode = null;
 
-        // 1. Grid Rendering
+        async function initApp() {
+            renderGrid();
+            const { data } = await supabaseClient.from('workers').select('*').eq('status', 'Active').order('id', { ascending: true });
+            const select = document.getElementById('workerSelect');
+            select.innerHTML = '<option value="" disabled selected>Select your profile...</option>';
+            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name}</option>`);
+            else select.innerHTML = '<option value="" disabled selected>No active workers found.</option>';
+        }
+
         function renderGrid() {
             const container = document.getElementById('gridArea');
             const rows = 'XWVUTSRQPONMLKJIHGFEDCBA'.split('');
-            
             rows.forEach(rowLetter => {
-                const rowDiv = document.createElement('div');
-                rowDiv.className = 'warehouse-row';
+                const rowDiv = document.createElement('div'); rowDiv.className = 'warehouse-row';
                 const isIndented = indentedRows.includes(rowLetter);
                 
-                const leftGroup = document.createElement('div');
-                leftGroup.className = 'rack-group';
-                for(let i = 1; i <= 32; i++) {
-                    const colStr = i.toString().padStart(3, '0');
-                    const isHidden = (isIndented && i === 1) ? 'hidden' : '';
-                    leftGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')"></div>`;
-                }
+                const leftGroup = document.createElement('div'); leftGroup.className = 'rack-group';
+                for(let i = 1; i <= 32; i++) leftGroup.innerHTML += `<div id="rack-${rowLetter}-${i.toString().padStart(3, '0')}" class="rack ${(isIndented && i === 1) ? 'hidden' : ''}"></div>`;
 
-                const label = document.createElement('div');
-                label.className = 'row-label'; label.id = `label-${rowLetter}`;
-                label.innerText = rowLetter;
+                const label = document.createElement('div'); label.className = 'row-label'; label.id = `label-${rowLetter}`; label.innerText = rowLetter;
 
-                const rightGroup = document.createElement('div');
-                rightGroup.className = 'rack-group';
-                for(let i = 33; i <= 64; i++) {
-                    const colStr = i.toString().padStart(3, '0');
-                    const isHidden = (isIndented && i === 64) ? 'hidden' : '';
-                    rightGroup.innerHTML += `<div id="rack-${rowLetter}-${colStr}" class="rack ${isHidden}" onclick="fetchRackInfo('${rowLetter}', '${colStr}')"></div>`;
-                }
+                const rightGroup = document.createElement('div'); rightGroup.className = 'rack-group';
+                for(let i = 33; i <= 64; i++) rightGroup.innerHTML += `<div id="rack-${rowLetter}-${i.toString().padStart(3, '0')}" class="rack ${(isIndented && i === 64) ? 'hidden' : ''}"></div>`;
 
-                rowDiv.appendChild(leftGroup);
-                rowDiv.appendChild(label);
-                rowDiv.appendChild(rightGroup);
-                container.appendChild(rowDiv);
+                rowDiv.appendChild(leftGroup); rowDiv.appendChild(label); rowDiv.appendChild(rightGroup); container.appendChild(rowDiv);
             });
-            
             window.addEventListener('resize', () => { if(isNavigating) drawCanvasLines(navIndex); });
         }
 
-        // 2. Fetch Info & Manage Cart
-        async function fetchRackInfo(row, col) {
-            if(isNavigating) return; 
-            document.getElementById('rackModal').style.display = 'flex';
-            document.getElementById('modalTitle').innerText = `Rack ${row}-${col}`;
-            document.getElementById('modalBody').innerHTML = '<i>Fetching...</i>';
-
-            const { data, error } = await supabaseClient.from('warehouse_parts').select('*').in('locator_id', [`CTRA1-${row}-${col}-1`, `CTRA1-${row}-${col}-2`]).order('locator_id', { ascending: true });
-            if (error || !data || data.length === 0) { document.getElementById('modalBody').innerHTML = '<p>Empty Rack</p>'; return; }
-
-            let html = '';
-            data.forEach(part => {
-                html += `<div class="shelf-info"><strong>${part.locator_id.endsWith('-2') ? 'Top' : 'Bottom'} Shelf</strong><br><span style="font-size:13px;"><b>Code:</b> ${part.part_code}<br><b>Name:</b> ${part.part_name}</span></div>`;
-            });
-            document.getElementById('modalBody').innerHTML = html;
-        }
-
-        function closeModal() { document.getElementById('rackModal').style.display = 'none'; }
-        function handleKeyPress(e) { if (e.key === 'Enter') addPart(); }
-
-        async function addPart() {
-            const input = document.getElementById('partInput');
-            const partCode = input.value.trim().toUpperCase();
-            if (!partCode) return;
-            if(currentPickList.find(p => p.part_code === partCode)) { alert('Added already!'); input.value = ''; return; }
-
-            const { data, error } = await supabaseClient.from('warehouse_parts').select('*').eq('part_code', partCode).single();
-            if (error || !data) alert('SKU not found.');
-            else { currentPickList.push(data); input.value = ''; updatePickListUI(); }
-        }
-
-        function removePart(code) { currentPickList = currentPickList.filter(p => p.part_code !== code); updatePickListUI(); }
-
-        function updatePickListUI() {
+        async function fetchWorkerTask() {
+            currentWorkerId = document.getElementById('workerSelect').value;
+            const taskCard = document.getElementById('taskCard');
             const list = document.getElementById('pickListContainer');
             const btn = document.getElementById('startNavBtn');
-            if(currentPickList.length === 0) {
-                list.innerHTML = '<p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">List is empty.</p>';
-                btn.style.display = 'none'; return;
-            }
-            btn.style.display = 'block'; list.innerHTML = '';
+            document.getElementById('mapContainer').classList.remove('nav-mode');
+
+            const { data: task } = await supabaseClient.from('tasks').select('id, toy_id, preset_toys(toy_name)').eq('worker_id', currentWorkerId).eq('status', 'In Progress').maybeSingle();
+            if (!task) return;
+
+            currentTaskId = task.id;
+            document.getElementById('taskToyName').innerText = task.preset_toys.toy_name;
+            taskCard.style.display = 'block';
+
+            const { data: bomData } = await supabaseClient.from('toy_bom').select('part_code, warehouse_parts(part_name, locator_id)').eq('toy_id', task.toy_id);
+            currentPickList = bomData.map(b => ({ part_code: b.part_code, part_name: b.warehouse_parts.part_name, locator_id: b.warehouse_parts.locator_id }));
+
+            // Estimated Time Calculation Logic Explained in text
+            const estMins = Math.ceil(currentPickList.length * 1.5);
+            document.getElementById('estTimeBadge').innerText = `Est. Time: ~${estMins} Mins (1.5m per pick)`;
+
+            list.innerHTML = '';
             currentPickList.forEach(part => {
-                list.innerHTML += `<div class="pick-item"><div><strong>${part.part_code}</strong><br><span style="font-size:12px;color:#666;">${part.part_name}</span></div><button class="delete-btn" onclick="removePart('${part.part_code}')">✕</button></div>`;
+                list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.part_code}</strong><br><span style="font-size:12px;color:#666;">${part.part_name}</span></div></div>`;
             });
+            btn.style.display = 'block';
         }
 
-        // 3. Start Navigation
+        function previewRack(locatorId) {
+            document.querySelectorAll('.rack.preview-target').forEach(el => el.classList.remove('preview-target'));
+            document.getElementById('mapContainer').classList.add('nav-mode'); // Dims background
+            const parts = locatorId.split('-');
+            const rackId = `rack-${parts[1]}-${parts[2]}`;
+            const target = document.getElementById(rackId);
+            if(target) target.classList.add('preview-target');
+        }
+
         async function startNavigation() {
             const btn = document.getElementById('startNavBtn');
-            btn.disabled = true; btn.innerText = 'Calculating A*...';
+            btn.disabled = true; btn.innerText = 'Calculating A* Route...';
 
             try {
                 const response = await fetch(`${PYTHON_API_URL}/api/optimize`, {
@@ -226,114 +220,172 @@
                 });
                 const result = await response.json();
                 
-                // Set logic checkpoints
                 routeSequence = ['packingStation'];
                 result.optimized_sequence.forEach(loc => routeSequence.push(`rack-${loc.split('-')[1]}-${loc.split('-')[2]}`));
                 routeSequence.push('packingStation');
                 
-                // Store exact physical path legs
                 pathLegs = result.path_legs;
-
-                isNavigating = true;
-                navIndex = -1; // Overview
+                scannedSteps.clear(); // Reset scan states
                 
+                isNavigating = true; navIndex = -1; 
                 document.getElementById('setupModePanel').style.display = 'none';
                 document.getElementById('navModePanel').style.display = 'flex';
                 document.getElementById('mapContainer').classList.add('nav-mode');
                 
-                updateNavUI();
-                drawCanvasLines(-1);
+                updateNavUI(); drawCanvasLines(-1);
 
-            } catch (err) {
-                alert('API Error. Ensure Python backend is running.');
-            } finally {
-                btn.disabled = false; btn.innerText = 'Start Navigation';
-            }
+            } catch (err) { alert('API Error. Ensure Python backend is running.'); } 
+            finally { btn.disabled = false; btn.innerText = 'Start Navigation'; }
+        }
+
+        function startScanner() {
+            document.getElementById('reader-container').style.display = 'block';
+            document.getElementById('btnScan').style.display = 'none';
+            const feedback = document.getElementById('scanFeedback');
+            feedback.style.display = 'none';
+            
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: { width: 250, height: 100 } },
+                (decodedText) => {
+                    const scanned = decodedText.trim().toUpperCase();
+                    if (scanned === currentExpectedSku.toUpperCase()) {
+                        html5QrCode.stop().then(() => {
+                            document.getElementById('reader-container').style.display = 'none';
+                            feedback.className = 'scan-feedback feedback-success';
+                            feedback.innerText = '✓ Part Verified';
+                            feedback.style.display = 'block';
+                            
+                            document.getElementById('btnNavNext').style.display = 'block'; 
+                            scannedSteps.add(navIndex); // Save state!
+                        });
+                    } else {
+                        // Error UX
+                        feedback.className = 'scan-feedback feedback-error';
+                        feedback.innerText = `Invalid Part: ${scanned}`;
+                        feedback.style.display = 'block';
+                        setTimeout(() => { if(html5QrCode.isScanning) feedback.style.display = 'none'; }, 2500);
+                    }
+                },
+                (errorMessage) => { }
+            ).catch(err => {
+                document.getElementById('reader-container').style.display = 'none';
+                feedback.className = 'scan-feedback feedback-success';
+                feedback.innerText = "Camera failed. Manual override unlocked.";
+                feedback.style.display = 'block';
+                document.getElementById('btnNavNext').style.display = 'block';
+                scannedSteps.add(navIndex);
+            });
         }
 
         function updateNavUI() {
             document.querySelectorAll('.rack.nav-target').forEach(el => el.classList.remove('nav-target'));
+            document.querySelectorAll('.rack.preview-target').forEach(el => el.classList.remove('preview-target'));
+            document.querySelectorAll('.rack.overview-target').forEach(el => {
+                el.classList.remove('overview-target');
+                el.removeAttribute('data-stop');
+            });
+            
             const btnNext = document.getElementById('btnNavNext');
             const btnBack = document.getElementById('btnNavBack');
+            const btnScan = document.getElementById('btnScan');
+            const feedback = document.getElementById('scanFeedback');
+            const readerContainer = document.getElementById('reader-container');
+            const instructions = document.getElementById('textInstructions');
+
+            if(html5QrCode && html5QrCode.isScanning) html5QrCode.stop();
+            readerContainer.style.display = 'none';
+            feedback.style.display = 'none';
+            instructions.style.display = 'none';
 
             if (navIndex === -1) {
+                // Overview Mode UX (Numbers instead of lines)
                 document.getElementById('navStepBadge').innerText = `OVERVIEW`;
-                document.getElementById('navTargetText').innerText = `Total Stops: ${routeSequence.length - 2}`;
                 document.getElementById('navItemName').innerText = `Route Generated`;
-                document.getElementById('navItemSku').innerText = `Review the map, then begin.`;
-                btnNext.innerText = 'Begin Pick 1'; btnBack.innerText = 'Cancel'; btnBack.disabled = false;
+                document.getElementById('navItemSku').innerText = `Review target locations, then begin.`;
+                btnNext.innerText = 'Begin First Pick'; btnNext.style.display = 'block';
+                btnBack.innerText = 'Cancel'; btnBack.disabled = false;
+                btnScan.style.display = 'none';
+
+                for (let i = 1; i < routeSequence.length - 1; i++) {
+                    const rack = document.getElementById(routeSequence[i]);
+                    if(rack) { rack.classList.add('overview-target'); rack.setAttribute('data-stop', i); }
+                }
+
             } else if (navIndex === routeSequence.length - 2) {
                 document.getElementById('navStepBadge').innerText = `FINAL RETURN`;
-                document.getElementById('navTargetText').innerText = `Target: Packing Station`;
                 document.getElementById('navItemName').innerText = `Drop Off Parts`;
-                document.getElementById('navItemSku').innerText = `Task Complete`;
-                btnNext.innerText = 'Finish Cycle'; btnBack.innerText = 'Back Step';
+                document.getElementById('navItemSku').innerText = `Return to Packing Station`;
+                instructions.innerHTML = `&#10148; Walk to the Central Aisle.<br>&#10148; Proceed to the Packing Station.<br>&#10148; Deliver all items to assembly.`;
+                instructions.style.display = 'block';
+                btnNext.innerText = 'Complete Cycle'; btnNext.style.display = 'block';
+                btnBack.innerText = 'Back Step'; btnScan.style.display = 'none';
             } else {
                 const rackId = routeSequence[navIndex + 1];
                 document.getElementById(rackId).classList.add('nav-target');
                 const locMatch = rackId.replace('rack-', '');
                 const part = currentPickList.find(p => p.locator_id.includes(locMatch));
+                
+                currentExpectedSku = part.part_code;
 
                 document.getElementById('navStepBadge').innerText = `STEP ${navIndex + 1} OF ${routeSequence.length - 2}`;
-                document.getElementById('navTargetText').innerText = `Target Rack: ${locMatch}`;
                 document.getElementById('navItemName').innerText = `Retrieve: ${part.part_name}`;
                 document.getElementById('navItemSku').innerText = `SKU ID: ${part.part_code}`;
-                btnNext.innerText = 'Next Stop'; btnBack.innerText = 'Back Step';
+                
+                // Text Instructions
+                const rowLtr = locMatch.split('-')[0];
+                const colNum = locMatch.split('-')[1];
+                const shelf = part.locator_id.endsWith('-2') ? 'Top Shelf' : 'Bottom Shelf';
+                instructions.innerHTML = `&#10148; Enter Aisle <b>${rowLtr}</b>.<br>&#10148; Locate Rack <b>${colNum}</b>.<br>&#10148; Pick item from <b>${shelf}</b>.`;
+                instructions.style.display = 'block';
+
+                btnBack.innerText = 'Back Step';
+                
+                // Back Step State Check
+                if (scannedSteps.has(navIndex)) {
+                    btnNext.innerText = 'Next Stop'; btnNext.style.display = 'block';
+                    btnScan.style.display = 'none';
+                    feedback.className = 'scan-feedback feedback-success';
+                    feedback.innerText = '✓ Already Scanned';
+                    feedback.style.display = 'block';
+                } else {
+                    btnNext.style.display = 'none';
+                    btnScan.style.display = 'block';
+                }
             }
         }
 
-        function navStep(direction) {
-            if (navIndex === -1 && direction === -1) { endNavigation(); return; }
+        async function navStep(direction) {
+            if (navIndex === -1 && direction === -1) { window.location.reload(); return; }
             navIndex += direction;
 
             if (navIndex >= routeSequence.length - 1) {
-                endNavigation(); alert('Cycle Complete! Cart cleared.');
-                currentPickList = []; updatePickListUI();
+                await supabaseClient.from('tasks').update({status: 'Completed'}).eq('id', currentTaskId);
+                await supabaseClient.from('workers').update({status: 'Idle'}).eq('id', currentWorkerId);
+                alert('Task Complete! Great job.');
+                window.location.reload(); 
             } else {
                 updateNavUI(); drawCanvasLines(navIndex);
             }
         }
 
-        function endNavigation() {
-            isNavigating = false;
-            document.getElementById('setupModePanel').style.display = 'flex';
-            document.getElementById('navModePanel').style.display = 'none';
-            document.getElementById('mapContainer').classList.remove('nav-mode');
-            document.querySelectorAll('.rack.nav-target').forEach(el => el.classList.remove('nav-target'));
-            const canvas = document.getElementById('routeCanvas');
-            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-        }
-
-        // 4. Exact Physical DOM Coordinate Mapping
         function getLogicalX(logicalX) {
             const containerRect = document.getElementById('mapContainer').getBoundingClientRect();
             if (logicalX === 33) return document.getElementById('label-A').getBoundingClientRect().left - containerRect.left + 15;
             let col = logicalX <= 32 ? logicalX : logicalX - 1;
             let colStr = col.toString().padStart(3, '0');
-            // Use Row C as reliable anchor since it spans all cols 1-64
-            let rect = document.getElementById('rack-C-' + colStr).getBoundingClientRect();
-            return (rect.left - containerRect.left) + (rect.width / 2);
+            return (document.getElementById('rack-C-' + colStr).getBoundingClientRect().left - containerRect.left) + 6;
         }
 
         function getLogicalY(logicalY) {
             const containerRect = document.getElementById('mapContainer').getBoundingClientRect();
             const getRackY = (id) => (document.getElementById(id).getBoundingClientRect().top - containerRect.top) + 6;
-
             if (logicalY % 2 !== 0) {
-                // It is a solid Rack Row (1, 3, 5...)
-                let rIdx = Math.floor(logicalY / 2);
-                return getRackY('rack-' + 'ABCDEFGHIJKLMNOPQRSTUVWX'[rIdx] + '-032');
+                return getRackY('rack-' + 'ABCDEFGHIJKLMNOPQRSTUVWX'[Math.floor(logicalY / 2)] + '-032');
             } else {
-                // It is a Walkway Aisle (0, 2, 4...)
-                if (logicalY === 0) {
-                    let yA = getRackY('rack-A-032'); let yB = getRackY('rack-B-032');
-                    return yA + (yA - yB) / 2; // Below Row A
-                }
-                if (logicalY === 48) {
-                    let yX = getRackY('rack-X-032'); let yW = getRackY('rack-W-032');
-                    return yX - (yW - yX) / 2; // Above Row X
-                }
-                // Middle Walkways (average distance between rows)
+                if (logicalY === 0) { let yA = getRackY('rack-A-032'); return yA + (yA - getRackY('rack-B-032')) / 2; }
+                if (logicalY === 48) { let yX = getRackY('rack-X-032'); return yX - (getRackY('rack-W-032') - yX) / 2; }
                 let yBelow = getRackY('rack-' + 'ABCDEFGHIJKLMNOPQRSTUVWX'[(logicalY/2)-1] + '-032');
                 let yAbove = getRackY('rack-' + 'ABCDEFGHIJKLMNOPQRSTUVWX'[logicalY/2] + '-032');
                 return (yBelow + yAbove) / 2;
@@ -342,38 +394,23 @@
 
         function drawCanvasLines(activeStep) {
             const canvas = document.getElementById('routeCanvas');
-            const container = document.getElementById('mapContainer');
-            canvas.width = container.clientWidth; canvas.height = container.clientHeight;
+            canvas.width = document.getElementById('mapContainer').clientWidth; 
+            canvas.height = document.getElementById('mapContainer').clientHeight;
             const ctx = canvas.getContext('2d');
             
-            const drawLeg = (leg, isGlowing) => {
-                if (!leg || leg.length === 0) return;
-                ctx.beginPath();
-                ctx.moveTo(getLogicalX(leg[0].x), getLogicalY(leg[0].y));
-                
-                for(let i = 1; i < leg.length; i++) {
-                    ctx.lineTo(getLogicalX(leg[i].x), getLogicalY(leg[i].y));
-                }
+            if (activeStep === -1) return; // Overview Mode: Draw nothing (just numbered badges)
 
-                if (isGlowing) {
-                    ctx.strokeStyle = '#2563EB'; ctx.lineWidth = 4;
-                    ctx.shadowColor = 'rgba(37, 99, 235, 0.8)'; ctx.shadowBlur = 10;
-                } else {
-                    ctx.strokeStyle = 'rgba(37, 99, 235, 0.2)'; ctx.lineWidth = 2; ctx.shadowBlur = 0;
-                }
+            const drawLeg = (leg) => {
+                if (!leg || leg.length === 0) return;
+                ctx.beginPath(); ctx.moveTo(getLogicalX(leg[0].x), getLogicalY(leg[0].y));
+                for(let i = 1; i < leg.length; i++) ctx.lineTo(getLogicalX(leg[i].x), getLogicalY(leg[i].y));
+                ctx.strokeStyle = '#2563EB'; ctx.lineWidth = 4; ctx.shadowColor = 'rgba(37, 99, 235, 0.8)'; ctx.shadowBlur = 10;
                 ctx.stroke();
             };
-
-            if (activeStep === -1) {
-                // Overview: Draw all legs dim
-                pathLegs.forEach(leg => drawLeg(leg, false));
-            } else {
-                // Checkpoint: Draw ONLY active leg glowing
-                drawLeg(pathLegs[activeStep], true);
-            }
+            drawLeg(pathLegs[activeStep]);
         }
 
-        window.onload = renderGrid;
+        window.onload = initApp;
     </script>
 </body>
 </html>
