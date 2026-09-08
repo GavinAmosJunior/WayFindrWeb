@@ -17,19 +17,17 @@ app.add_middleware(
 
 class WarehouseEngine:
     def __init__(self):
-        # Grid Size: X from 1 to 65, Y from 0 to 48.
-        # Y=0 is the Packing Station Aisle. Y=1 is Row A... Y=48 is Aisle above Row X.
+        #X from 1 to 65, Y from 0 to 48
+        #Y=0 is the packing station. Row A starting from 1-48.
         self.rows = "ABCDEFGHIJKLMNOPQRSTUVWX"
         self.row_map = {c: i for i, c in enumerate(self.rows)}
         self.indented_rows = {'B', 'D', 'F', 'H', 'J', 'L', 'N', 'P', 'R', 'T', 'V', 'X'}
-        self.entrance_coord = (33, 0) # Center Aisle, Bottom
+        self.entrance_coord = (33, 0)
         
-        # Build Logical Grid (0 = walkable aisle/gap, 1 = solid rack obstacle)
         self.costmap = [[0 for _ in range(49)] for _ in range(66)]
         self.build_obstacles()
 
     def build_obstacles(self):
-        """Strictly enforces perimeter walls and rack obstacles."""
         for r_idx, r_letter in enumerate(self.rows):
             y = r_idx * 2 + 1 # Racks live on odd Y coordinates (1, 3, 5...)
             for c in range(1, 65):

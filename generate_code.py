@@ -2,7 +2,6 @@ import barcode
 from barcode.writer import ImageWriter
 import os
 
-# The exact SKUs we injected into Supabase earlier
 parts = [
     "HW-TM-01", "HW-TM-02", "HW-TM-03", "HW-TM-04",
     "HW-MT-01", "HW-MT-02", "HW-MT-03",
@@ -10,10 +9,8 @@ parts = [
     "BB-FA-01", "BB-FA-02", "BB-FA-03"
 ]
 
-# Create a folder to store the images
 os.makedirs("barcodes", exist_ok=True)
 
-# Formatting options to make it readable for cameras
 options = {
     'module_width': 0.4,  
     'module_height': 15.0, 
@@ -25,12 +22,10 @@ options = {
 print("Generating barcodes...")
 
 for part in parts:
-    # Generate Code128 barcode for each SKU
     my_barcode = barcode.get("code128", part, writer=ImageWriter())
-    
-    # Save it in the /barcodes folder
+
     filename = f"barcodes/{part}"
     my_barcode.save(filename, options=options)
-    print(f"✅ Saved: {filename}.png")
+    print(f"Saved as {filename}.png")
 
 print("Done! Check the 'barcodes' folder.")

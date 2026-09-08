@@ -24,7 +24,11 @@
         
         .list-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .list-item { padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .queue-item-content { min-width: 0; }
         .toy-name { font-weight: bold; font-size: 14px; }
+        .parts-dropdown { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+        .parts-dropdown summary { cursor: pointer; color: var(--dark-slate); font-weight: 600; }
+        .parts-list { margin: 8px 0 0; padding-left: 18px; line-height: 1.6; }
         .btn-remove { background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; width: auto; margin:0;}
         
         .worker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -83,7 +87,19 @@
 
         async function fetchState() {
             const { data: tasks } = await supabaseClient.from('tasks').select('id, toy_id, preset_toys(toy_name)').eq('status', 'Pending').order('created_at', { ascending: true });
-            pendingTasks = tasks || []; renderQueue();
+            pendingTasks = tasks || [];
+
+            const toyIds = pendingTasks.map(task => task.toy_id);
+            if (toyIds.length > 0) {
+                const { data: bomData } = await supabaseClient.from('toy_bom').select('toy_id, part_code, warehouse_parts(part_name, locator_id)').in('toy_id', toyIds);
+                const partsByToy = {};
+                (bomData || []).forEach(bomPart => {
+                    if (!partsByToy[bomPart.toy_id]) partsByToy[bomPart.toy_id] = [];
+                    partsByToy[bomPart.toy_id].push(bomPart);
+                });
+                pendingTasks.forEach(task => task.parts = partsByToy[task.toy_id] || []);
+            }
+            renderQueue();
 
             const { data: workerData } = await supabaseClient.from('workers').select('id, worker_name, status').order('id', { ascending: true });
             for (let w of (workerData || [])) {
@@ -136,9 +152,13 @@
             if (pendingTasks.length === 0) { list.innerHTML = '<div style="color:var(--text-muted); text-align:center; margin-top:20px; font-size:14px;">Queue is empty.</div>'; return; }
             list.innerHTML = pendingTasks.map(t => `
                 <div class="list-item">
-                    <div>
+                    <div class="queue-item-content">
                         <div class="toy-name">${t.preset_toys.toy_name}</div>
                         <div style="font-size:11px; color:#999; margin-top:4px;">Task ID: #${t.id}</div>
+                        <details class="parts-dropdown">
+                            <summary>View parts (${t.parts.length})</summary>
+                            ${t.parts.length ? `<ul class="parts-list">${t.parts.map(part => `<li>${part.part_code} - ${part.warehouse_parts.part_name}</li>`).join('')}</ul>` : '<div class="parts-list">No parts found.</div>'}
+                        </details>
                     </div>
                     <button class="btn-remove" onclick="removeTask(${t.id})">Remove</button>
                 </div>
