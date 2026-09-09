@@ -142,7 +142,7 @@
             const { data } = await supabaseClient.from('workers').select('*').eq('status', 'Active').order('id', { ascending: true });
             const select = document.getElementById('workerSelect');
             select.innerHTML = '<option value="" disabled selected>Select your profile...</option>';
-            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name} - ${(w.category || 'Unassigned').toUpperCase()}</option>`);
+            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name} - ${w.category ? `${w.category[0].toUpperCase() + w.category.slice(1)} Zone` : 'Unassigned'}</option>`);
             else select.innerHTML = '<option value="" disabled selected>No active workers found.</option>';
         }
 

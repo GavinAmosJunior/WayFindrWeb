@@ -38,6 +38,11 @@
         .status-active { background: #dbeafe; color: #1e40af; }
         .worker-task { font-size: 13px; color: var(--text-muted); min-height: 20px; }
         .worker-category { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--dark-slate); background: white; }
+        .worker-name { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+        .category-dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 12px; }
+        .category-kitting { background: #8b5cf6; }
+        .category-textile { background: #f97316; }
+        .category-plastics { background: #3b82f6; }
         .btn-cancel { background: #fef2f2; color: #ef4444; border: none; padding: 6px; font-size: 11px; border-radius: 6px; margin: 0; width: 100%;}
     </style>
 </head>
@@ -190,11 +195,13 @@
             });
             grid.innerHTML = sortedWorkers.map(w => {
                 const isActive = w.status === 'Active';
+                const category = categoryOrder.includes(w.category) ? w.category : 'plastics';
+                const categoryLabel = `${category[0].toUpperCase() + category.slice(1)} Zone`;
                 return `
                 <div class="worker-card">
-                    <strong>${w.worker_name}</strong>
+                    <strong class="worker-name" title="${categoryLabel}"><span class="category-dot category-${category}" aria-hidden="true"></span>${w.worker_name}</strong>
                     <select class="worker-category" aria-label="Category for ${w.worker_name}" onchange="updateWorkerCategory(${w.id}, this.value)">
-                        ${categoryOrder.map(category => `<option value="${category}" ${w.category === category ? 'selected' : ''}>${category[0].toUpperCase() + category.slice(1)}</option>`).join('')}
+                        ${categoryOrder.map(category => `<option value="${category}" ${w.category === category ? 'selected' : ''}>${category[0].toUpperCase() + category.slice(1)} Zone</option>`).join('')}
                     </select>
                     <div class="status-badge ${isActive ? 'status-active' : 'status-idle'}">${w.status}</div>
                     <div class="worker-task">${isActive ? `Picking: ${w.currentTaskName}` : 'Waiting...'}</div>
