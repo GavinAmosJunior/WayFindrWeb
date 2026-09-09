@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PickPath AI - Enhanced Worker Navigation</title>
+    <title>PickPath AI - Enhanced Shopper Navigation</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -71,9 +71,9 @@
 
     <div class="sidebar">
         <div id="setupModePanel">
-            <h3>1. Active Workers</h3>
+            <h3>1. Active Shoppers</h3>
             <select id="workerSelect" onchange="fetchWorkerTask()">
-                <option value="" disabled selected>Loading active workers...</option>
+                <option value="" disabled selected>Loading active shoppers...</option>
             </select>
             
             <div id="taskCard" class="task-card">
@@ -143,7 +143,7 @@
             const select = document.getElementById('workerSelect');
             select.innerHTML = '<option value="" disabled selected>Select your profile...</option>';
             if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name} - ${w.category ? `${w.category[0].toUpperCase() + w.category.slice(1)} Zone` : 'Unassigned'}</option>`);
-            else select.innerHTML = '<option value="" disabled selected>No active workers found.</option>';
+            else select.innerHTML = '<option value="" disabled selected>No active shoppers found.</option>';
         }
 
         function renderGrid() {

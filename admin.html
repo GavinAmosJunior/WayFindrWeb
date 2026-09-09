@@ -60,11 +60,11 @@
         <div class="card">
             <h2>2. Pending Queue</h2>
             <div class="list-container" id="pendingQueueList"></div>
-            <button class="btn-assign" onclick="autoAssignTasks()" style="margin-top: 20px;">Assign ALL to Idle Workers</button>
+            <button class="btn-assign" onclick="autoAssignTasks()" style="margin-top: 20px;">Assign ALL to Idle Shoppers</button>
         </div>
 
         <div class="card">
-            <h2>3. Live Worker Status</h2>
+            <h2>3. Live Shopper Status</h2>
             <div class="worker-grid" id="workerGrid"></div>
         </div>
     </div>
@@ -121,7 +121,7 @@
         async function updateWorkerCategory(workerId, category) {
             const { error } = await supabaseClient.from('workers').update({ category }).eq('id', workerId);
             if (error) {
-                alert(`Unable to update worker category: ${error.message}`);
+                alert(`Unable to update shopper category: ${error.message}`);
                 fetchState();
             }
         }
@@ -139,7 +139,7 @@
         async function autoAssignTasks() {
             if (pendingTasks.length === 0) return alert('Queue is empty!');
             const idleWorkers = workers.filter(w => w.status === 'Idle');
-            if (idleWorkers.length === 0) return alert('No idle workers available.');
+            if (idleWorkers.length === 0) return alert('No idle shoppers available.');
 
             let matchCount = Math.min(pendingTasks.length, idleWorkers.length);
             for (let i = 0; i < matchCount; i++) {
