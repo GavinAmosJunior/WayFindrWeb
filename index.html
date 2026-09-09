@@ -26,7 +26,6 @@
 
         .start-nav-btn { background: var(--dark-slate); color: white; border: none; width: 100%; padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; display: none; }
 
-        /* Navigation Mode */
         #navModePanel { display: none; flex-direction: column; flex: 1; justify-content: center; }
         .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .nav-badge { background: var(--dark-slate); color: white; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; }
@@ -35,10 +34,8 @@
         .nav-item-name { color: #1E293B; font-size: 20px; margin: 0 0 4px 0; font-weight: bold; line-height: 1.2; }
         .nav-item-sku { color: var(--primary-blue); font-size: 14px; margin: 0 0 15px 0; font-weight: 600; }
         
-        /* Text Instructions */
         .text-instructions { background: #eff6ff; border-left: 4px solid var(--primary-blue); padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; color: #1e3a8a; line-height: 1.5; font-weight: 500;}
 
-        /* Barcode Scanner UI */
         #reader-container { display: none; margin-bottom: 10px; border: 2px solid var(--primary-blue); border-radius: 8px; overflow: hidden; background: #000; }
         .scan-btn { background: #10B981; color: white; border: none; width: 100%; padding: 14px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; margin-bottom: 8px; }
         .scan-feedback { font-weight: bold; font-size: 13px; text-align: center; margin-bottom: 15px; display: none; padding: 8px; border-radius: 6px; }
@@ -52,7 +49,6 @@
         .btn-next { background: var(--dark-slate); color: white; margin-bottom: 8px; display: none; } 
         .btn-back { background: transparent; border: 1.5px solid #CBD5E1; color: #475569; }
 
-        /* Map Container */
         .map-container { flex: 1; background: var(--sidebar-bg); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
         #routeCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
         #gridArea { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; z-index: 5;}
@@ -63,12 +59,10 @@
         .row-label { width: 30px; text-align: center; color: var(--primary-blue); font-weight: bold; font-size: 12px; }
         #packingStation { width: 120px; height: 30px; background-color: var(--dark-slate); color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; margin-top: 20px; z-index: 5;}
         
-        /* Highlight States */
         .map-container.nav-mode .rack:not(.nav-target):not(.overview-target):not(.preview-target):not(.hidden) { opacity: 0.15; }
         .rack.nav-target { background-color: #2563EB !important; transform: scale(1.5); z-index: 15; box-shadow: 0 0 15px rgba(37, 99, 235, 0.6); }
         .rack.preview-target { background-color: #a855f7 !important; transform: scale(1.5); z-index: 15; box-shadow: 0 0 15px rgba(168, 85, 247, 0.6); }
         
-        /* Overview Numbered Badges */
         .rack.overview-target { background-color: #10B981 !important; transform: scale(1.3); z-index: 15; }
         .rack.overview-target::after { content: attr(data-stop); position: absolute; top: -14px; left: -4px; background: var(--dark-slate); color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; display: flex; align-items: center; justify-content: center; }
     </style>
@@ -136,7 +130,7 @@
         let currentWorkerId = null;
         let currentExpectedSku = "";
         
-        let scannedSteps = new Set(); // Stores the indices of items already scanned
+        let scannedSteps = new Set();
         
         const indentedRows = ['B','D','F','H','J','L','N','P','R','T','V','X'];
         let isNavigating = false;
@@ -148,7 +142,7 @@
             const { data } = await supabaseClient.from('workers').select('*').eq('status', 'Active').order('id', { ascending: true });
             const select = document.getElementById('workerSelect');
             select.innerHTML = '<option value="" disabled selected>Select your profile...</option>';
-            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name}</option>`);
+            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name} - ${(w.category || 'Unassigned').toUpperCase()}</option>`);
             else select.innerHTML = '<option value="" disabled selected>No active workers found.</option>';
         }
 
@@ -189,7 +183,6 @@
             const { data: bomData } = await supabaseClient.from('toy_bom').select('part_code, warehouse_parts(part_name, locator_id)').eq('toy_id', task.toy_id);
             currentPickList = bomData.map(b => ({ part_code: b.part_code, part_name: b.warehouse_parts.part_name, locator_id: b.warehouse_parts.locator_id }));
 
-            // Estimated Time Calculation Logic Explained in text
             const estMins = Math.ceil(currentPickList.length * 1.5);
             document.getElementById('estTimeBadge').innerText = `Est. Time: ~${estMins} Mins (1.5m per pick)`;
 
@@ -202,7 +195,7 @@
 
         function previewRack(locatorId) {
             document.querySelectorAll('.rack.preview-target').forEach(el => el.classList.remove('preview-target'));
-            document.getElementById('mapContainer').classList.add('nav-mode'); // Dims background
+            document.getElementById('mapContainer').classList.add('nav-mode');
             const parts = locatorId.split('-');
             const rackId = `rack-${parts[1]}-${parts[2]}`;
             const target = document.getElementById(rackId);
@@ -225,7 +218,7 @@
                 routeSequence.push('packingStation');
                 
                 pathLegs = result.path_legs;
-                scannedSteps.clear(); // Reset scan states
+                scannedSteps.clear();
                 
                 isNavigating = true; navIndex = -1; 
                 document.getElementById('setupModePanel').style.display = 'none';
@@ -258,10 +251,9 @@
                             feedback.style.display = 'block';
                             
                             document.getElementById('btnNavNext').style.display = 'block'; 
-                            scannedSteps.add(navIndex); // Save state!
+                            scannedSteps.add(navIndex);
                         });
                     } else {
-                        // Error UX
                         feedback.className = 'scan-feedback feedback-error';
                         feedback.innerText = `Invalid Part: ${scanned}`;
                         feedback.style.display = 'block';
@@ -300,7 +292,6 @@
             instructions.style.display = 'none';
 
             if (navIndex === -1) {
-                // Overview Mode UX (Numbers instead of lines)
                 document.getElementById('navStepBadge').innerText = `OVERVIEW`;
                 document.getElementById('navItemName').innerText = `Route Generated`;
                 document.getElementById('navItemSku').innerText = `Review target locations, then begin.`;
@@ -333,7 +324,6 @@
                 document.getElementById('navItemName').innerText = `Retrieve: ${part.part_name}`;
                 document.getElementById('navItemSku').innerText = `SKU ID: ${part.part_code}`;
                 
-                // Text Instructions
                 const rowLtr = locMatch.split('-')[0];
                 const colNum = locMatch.split('-')[1];
                 const shelf = part.locator_id.endsWith('-2') ? 'Top Shelf' : 'Bottom Shelf';
@@ -342,7 +332,6 @@
 
                 btnBack.innerText = 'Back Step';
                 
-                // Back Step State Check
                 if (scannedSteps.has(navIndex)) {
                     btnNext.innerText = 'Next Stop'; btnNext.style.display = 'block';
                     btnScan.style.display = 'none';
@@ -398,7 +387,7 @@
             canvas.height = document.getElementById('mapContainer').clientHeight;
             const ctx = canvas.getContext('2d');
             
-            if (activeStep === -1) return; // Overview Mode: Draw nothing (just numbered badges)
+            if (activeStep === -1) return;
 
             const drawLeg = (leg) => {
                 if (!leg || leg.length === 0) return;

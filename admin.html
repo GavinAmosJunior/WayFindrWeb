@@ -37,6 +37,7 @@
         .status-idle { background: #dcfce7; color: #166534; }
         .status-active { background: #dbeafe; color: #1e40af; }
         .worker-task { font-size: 13px; color: var(--text-muted); min-height: 20px; }
+        .worker-category { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--dark-slate); background: white; }
         .btn-cancel { background: #fef2f2; color: #ef4444; border: none; padding: 6px; font-size: 11px; border-radius: 6px; margin: 0; width: 100%;}
     </style>
 </head>
@@ -101,7 +102,7 @@
             }
             renderQueue();
 
-            const { data: workerData } = await supabaseClient.from('workers').select('id, worker_name, status').order('id', { ascending: true });
+            const { data: workerData } = await supabaseClient.from('workers').select('id, worker_name, status, category').order('id', { ascending: true });
             for (let w of (workerData || [])) {
                 if (w.status === 'Active') {
                     const { data: activeTask } = await supabaseClient.from('tasks').select('id, preset_toys(toy_name)').eq('worker_id', w.id).eq('status', 'In Progress').single();
@@ -110,6 +111,14 @@
                 }
             }
             workers = workerData || []; renderWorkers();
+        }
+
+        async function updateWorkerCategory(workerId, category) {
+            const { error } = await supabaseClient.from('workers').update({ category }).eq('id', workerId);
+            if (error) {
+                alert(`Unable to update worker category: ${error.message}`);
+                fetchState();
+            }
         }
 
         async function queueOrder() {
@@ -149,13 +158,17 @@
 
         function renderQueue() {
             const list = document.getElementById('pendingQueueList');
+            const openTaskIds = new Set(
+                Array.from(list.querySelectorAll('details[data-task-id][open]'))
+                    .map(details => details.dataset.taskId)
+            );
             if (pendingTasks.length === 0) { list.innerHTML = '<div style="color:var(--text-muted); text-align:center; margin-top:20px; font-size:14px;">Queue is empty.</div>'; return; }
             list.innerHTML = pendingTasks.map(t => `
                 <div class="list-item">
                     <div class="queue-item-content">
                         <div class="toy-name">${t.preset_toys.toy_name}</div>
                         <div style="font-size:11px; color:#999; margin-top:4px;">Task ID: #${t.id}</div>
-                        <details class="parts-dropdown">
+                        <details class="parts-dropdown" data-task-id="${t.id}">
                             <summary>View parts (${t.parts.length})</summary>
                             ${t.parts.length ? `<ul class="parts-list">${t.parts.map(part => `<li>${part.part_code} - ${part.warehouse_parts.part_name}</li>`).join('')}</ul>` : '<div class="parts-list">No parts found.</div>'}
                         </details>
@@ -163,15 +176,26 @@
                     <button class="btn-remove" onclick="removeTask(${t.id})">Remove</button>
                 </div>
             `).join('');
+            list.querySelectorAll('details[data-task-id]').forEach(details => {
+                details.open = openTaskIds.has(details.dataset.taskId);
+            });
         }
 
         function renderWorkers() {
             const grid = document.getElementById('workerGrid');
-            grid.innerHTML = workers.map(w => {
+            const categoryOrder = ['plastics', 'kitting', 'textile'];
+            const sortedWorkers = [...workers].sort((a, b) => {
+                const categoryDifference = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+                return categoryDifference || a.id - b.id;
+            });
+            grid.innerHTML = sortedWorkers.map(w => {
                 const isActive = w.status === 'Active';
                 return `
                 <div class="worker-card">
                     <strong>${w.worker_name}</strong>
+                    <select class="worker-category" aria-label="Category for ${w.worker_name}" onchange="updateWorkerCategory(${w.id}, this.value)">
+                        ${categoryOrder.map(category => `<option value="${category}" ${w.category === category ? 'selected' : ''}>${category[0].toUpperCase() + category.slice(1)}</option>`).join('')}
+                    </select>
                     <div class="status-badge ${isActive ? 'status-active' : 'status-idle'}">${w.status}</div>
                     <div class="worker-task">${isActive ? `Picking: ${w.currentTaskName}` : 'Waiting...'}</div>
                     ${isActive ? `<button class="btn-cancel" onclick="cancelWorkerTask(${w.id}, ${w.currentTaskId})">Cancel Assignment</button>` : ''}
