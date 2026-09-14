@@ -175,7 +175,7 @@
                         <div style="font-size:11px; color:#999; margin-top:4px;">Task ID: #${t.id}</div>
                         <details class="parts-dropdown" data-task-id="${t.id}">
                             <summary>View parts (${t.parts.length})</summary>
-                            ${t.parts.length ? `<ul class="parts-list">${t.parts.map(part => `<li>${part.part_code} - ${part.warehouse_parts.part_name}</li>`).join('')}</ul>` : '<div class="parts-list">No parts found.</div>'}
+                            ${t.parts.length ? `<ul class="parts-list">${t.parts.map(part => `<li><strong>${part.warehouse_parts.locator_id}</strong> | SKU: ${part.part_code} - ${part.warehouse_parts.part_name}</li>`).join('')}</ul>` : '<div class="parts-list">No parts found.</div>'}
                         </details>
                     </div>
                     <button class="btn-remove" onclick="removeTask(${t.id})">Remove</button>
