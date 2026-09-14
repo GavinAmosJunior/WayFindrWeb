@@ -92,30 +92,44 @@
         }
 
         async function fetchState() {
-            const { data: tasks } = await supabaseClient.from('tasks').select('id, toy_id, preset_toys(toy_name)').eq('status', 'Pending').order('created_at', { ascending: true });
+            // Fetch pending tasks along with their zone requirement
+            const { data: tasks } = await supabaseClient.from('tasks')
+                .select('id, toy_id, zone, preset_toys(toy_name)')
+                .eq('status', 'Pending')
+                .order('created_at', { ascending: true });
             pendingTasks = tasks || [];
 
             const toyIds = pendingTasks.map(task => task.toy_id);
             if (toyIds.length > 0) {
-                const { data: bomData } = await supabaseClient.from('toy_bom').select('toy_id, part_code, warehouse_parts(part_name, locator_id)').in('toy_id', toyIds);
+                // Fetch parts with category data
+                const { data: bomData } = await supabaseClient.from('toy_bom')
+                    .select('toy_id, part_code, warehouse_parts(part_name, locator_id, category)')
+                    .in('toy_id', toyIds);
+                    
                 const partsByToy = {};
                 (bomData || []).forEach(bomPart => {
                     if (!partsByToy[bomPart.toy_id]) partsByToy[bomPart.toy_id] = [];
                     partsByToy[bomPart.toy_id].push(bomPart);
                 });
-                pendingTasks.forEach(task => task.parts = partsByToy[task.toy_id] || []);
+                
+                // Assign ONLY the parts that match the task's specific zone
+                pendingTasks.forEach(task => {
+                    const allToyParts = partsByToy[task.toy_id] || [];
+                    task.parts = allToyParts.filter(p => p.warehouse_parts.category === task.zone);
+                });
             }
             renderQueue();
 
             const { data: workerData } = await supabaseClient.from('workers').select('id, worker_name, status, category').order('id', { ascending: true });
             for (let w of (workerData || [])) {
                 if (w.status === 'Active') {
-                    const { data: activeTask } = await supabaseClient.from('tasks').select('id, preset_toys(toy_name)').eq('worker_id', w.id).eq('status', 'In Progress').single();
-                    w.currentTaskName = activeTask ? activeTask.preset_toys.toy_name : 'Unknown Task';
+                    const { data: activeTask } = await supabaseClient.from('tasks').select('id, zone, preset_toys(toy_name)').eq('worker_id', w.id).eq('status', 'In Progress').maybeSingle();
+                    w.currentTaskName = activeTask ? `${activeTask.preset_toys.toy_name} (${activeTask.zone})` : 'Unknown Task';
                     w.currentTaskId = activeTask ? activeTask.id : null;
                 }
             }
-            workers = workerData || []; renderWorkers();
+            workers = workerData || []; 
+            renderWorkers();
         }
 
         async function updateWorkerCategory(workerId, category) {
@@ -130,8 +144,26 @@
             const checkboxes = document.querySelectorAll('.toy-checkbox:checked');
             const selectedIds = Array.from(checkboxes).map(cb => cb.value);
             if (selectedIds.length === 0) return alert('Please select at least one toy.');
-            const inserts = selectedIds.map(id => ({ toy_id: id }));
-            await supabaseClient.from('tasks').insert(inserts);
+
+            // Fetch the BOM and categories for selected toys
+            const { data: bomData } = await supabaseClient.from('toy_bom')
+                .select('toy_id, warehouse_parts(category)')
+                .in('toy_id', selectedIds);
+                
+            const inserts = [];
+            selectedIds.forEach(id => {
+                // Filter parts for this specific toy and find unique zones required
+                const parts = bomData.filter(b => b.toy_id == id && b.warehouse_parts.category);
+                const uniqueZones = [...new Set(parts.map(b => b.warehouse_parts.category))];
+                
+                // Create a distinct task for each required zone
+                uniqueZones.forEach(zone => inserts.push({ toy_id: id, zone: zone }));
+            });
+
+            if (inserts.length > 0) {
+                await supabaseClient.from('tasks').insert(inserts);
+            }
+            
             checkboxes.forEach(cb => cb.checked = false); 
             fetchState();
         }
@@ -141,10 +173,16 @@
             const idleWorkers = workers.filter(w => w.status === 'Idle');
             if (idleWorkers.length === 0) return alert('No idle shoppers available.');
 
-            let matchCount = Math.min(pendingTasks.length, idleWorkers.length);
-            for (let i = 0; i < matchCount; i++) {
-                await supabaseClient.from('tasks').update({ status: 'In Progress', worker_id: idleWorkers[i].id }).eq('id', pendingTasks[i].id);
-                await supabaseClient.from('workers').update({ status: 'Active' }).eq('id', idleWorkers[i].id);
+            for (let task of pendingTasks) {
+                // Find an idle worker whose designated category matches the task's zone requirement
+                const workerIndex = idleWorkers.findIndex(w => w.status === 'Idle' && w.category === task.zone);
+                
+                if (workerIndex !== -1) {
+                    const worker = idleWorkers[workerIndex];
+                    await supabaseClient.from('tasks').update({ status: 'In Progress', worker_id: worker.id }).eq('id', task.id);
+                    await supabaseClient.from('workers').update({ status: 'Active' }).eq('id', worker.id);
+                    worker.status = 'Active'; // Lock to prevent double assignment in loop
+                }
             }
             fetchState();
         }
@@ -164,14 +202,14 @@
         function renderQueue() {
             const list = document.getElementById('pendingQueueList');
             const openTaskIds = new Set(
-                Array.from(list.querySelectorAll('details[data-task-id][open]'))
-                    .map(details => details.dataset.taskId)
+                Array.from(list.querySelectorAll('details[data-task-id][open]')).map(details => details.dataset.taskId)
             );
             if (pendingTasks.length === 0) { list.innerHTML = '<div style="color:var(--text-muted); text-align:center; margin-top:20px; font-size:14px;">Queue is empty.</div>'; return; }
+            
             list.innerHTML = pendingTasks.map(t => `
                 <div class="list-item">
                     <div class="queue-item-content">
-                        <div class="toy-name">${t.preset_toys.toy_name}</div>
+                        <div class="toy-name">${t.preset_toys.toy_name} <span style="color:#2563EB;">[${t.zone ? t.zone.toUpperCase() : 'UNASSIGNED'} ZONE]</span></div>
                         <div style="font-size:11px; color:#999; margin-top:4px;">Task ID: #${t.id}</div>
                         <details class="parts-dropdown" data-task-id="${t.id}">
                             <summary>View parts (${t.parts.length})</summary>
@@ -181,6 +219,7 @@
                     <button class="btn-remove" onclick="removeTask(${t.id})">Remove</button>
                 </div>
             `).join('');
+            
             list.querySelectorAll('details[data-task-id]').forEach(details => {
                 details.open = openTaskIds.has(details.dataset.taskId);
             });
