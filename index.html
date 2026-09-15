@@ -176,9 +176,9 @@
             const btn = document.getElementById('startNavBtn');
             document.getElementById('mapContainer').classList.remove('nav-mode');
 
-            // Fetch the task and its zone requirement
+            // FETCH order_qty:
             const { data: task } = await supabaseClient.from('tasks')
-                .select('id, toy_id, zone, preset_toys(toy_name)')
+                .select('id, toy_id, zone, order_qty, preset_toys(toy_name)')
                 .eq('worker_id', currentWorkerId)
                 .eq('status', 'In Progress')
                 .maybeSingle();
@@ -191,25 +191,29 @@
             }
 
             currentTaskId = task.id;
-            // Visually denote which zone they are picking for
-            document.getElementById('taskToyName').innerText = `${task.preset_toys.toy_name} [${task.zone.toUpperCase()} ZONE]`;
+            // DISPLAY THE MULTIPLIER IN THE TASK NAME:
+            document.getElementById('taskToyName').innerText = `${task.preset_toys.toy_name} (x${task.order_qty}) [${task.zone.toUpperCase()} ZONE]`;
             taskCard.style.display = 'block';
 
             const { data: bomData } = await supabaseClient.from('toy_bom')
-                .select('part_code, warehouse_parts(part_name, locator_id, category)')
+                .select('part_code, qty_required, warehouse_parts(part_name, locator_id, category)')
                 .eq('toy_id', task.toy_id);
             
-            // Filter out parts that do not belong to this worker's current zone task
             currentPickList = bomData
                 .filter(b => b.warehouse_parts.category === task.zone)
-                .map(b => ({ part_code: b.part_code, part_name: b.warehouse_parts.part_name, locator_id: b.warehouse_parts.locator_id }));
+                .map(b => ({ 
+                    part_code: b.part_code, 
+                    part_name: b.warehouse_parts.part_name, 
+                    locator_id: b.warehouse_parts.locator_id, 
+                    qty: b.qty_required * task.order_qty // MULTIPLY BY ORDER QUANTITY HERE
+                }));
 
             const estMins = Math.ceil(currentPickList.length * 1.5);
             document.getElementById('estTimeBadge').innerText = `Est. Time: ~${estMins} Mins (1.5m per pick)`;
 
             list.innerHTML = '';
             currentPickList.forEach(part => {
-                list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.locator_id}</strong> <span style="font-size:12px;color:#8b5cf6;font-weight:600;">(SKU: ${part.part_code})</span><br><span style="font-size:12px;color:#666;">${part.part_name}</span></div></div>`;
+                list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.locator_id}</strong> <span style="font-size:12px;color:#8b5cf6;font-weight:600;">(SKU: ${part.part_code})</span><br><span style="font-size:12px;color:#666;">${part.part_name}</span><br><span style="font-size:13px;color:#ef4444;font-weight:bold;">&#10148; Quantity to Pick: ${part.qty}</span></div></div>`;
             });
             btn.style.display = 'block';
         }
@@ -374,7 +378,7 @@
                 const rowLtr = locMatch.split('-')[0];
                 const colNum = locMatch.split('-')[1];
                 const shelf = part.locator_id.endsWith('-2') ? 'Top Shelf' : 'Bottom Shelf';
-                instructions.innerHTML = `&#10148; Enter Aisle <b>${rowLtr}</b>.<br>&#10148; Locate Rack <b>${colNum}</b>.<br>&#10148; Pick item from <b>${shelf}</b>.`;
+                instructions.innerHTML = `&#10148; Enter Aisle <b>${rowLtr}</b>.<br>&#10148; Locate Rack <b>${colNum}</b>.<br>&#10148; Pick <b><span style="color:#ef4444;">${part.qty} item(s)</span></b> from <b>${shelf}</b>.`;
                 instructions.style.display = 'block';
 
                 btnBack.innerText = 'Back Step';
