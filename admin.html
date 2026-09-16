@@ -35,6 +35,9 @@
         .btn-remove { background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; width: auto; margin:0;}
         
         .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; margin-bottom: 10px; box-sizing: border-box; }
+        .filter-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .filter-row .search-input, .filter-row select { margin-bottom: 0; }
+        .filter-row select { flex: 1; padding: 8.1px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; min-width: 0; }
         .part-result-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
 
         .worker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -59,6 +62,10 @@
         <div class="card">
             <h2>1. Create Order</h2>
             <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Check the boxes for the toys you want to queue.</p>
+            <div class="filter-row">
+                <input type="search" id="toySearch" class="search-input" placeholder="Search toys..." oninput="filterToys()">
+                <select id="toyFilter" aria-label="Filter toys" onchange="filterToys()"><option value="all">All toys</option></select>
+            </div>
             <div id="toyCheckboxes" class="toy-checkbox-container"><i>Loading toys...</i></div>
             <button class="btn-add" onclick="queueOrder()">Add Selection to Queue</button>
 
@@ -76,6 +83,12 @@
 
         <div class="card">
             <h2>3. Live Shopper Status</h2>
+            <div class="filter-row">
+                <input type="search" id="workerSearch" class="search-input" placeholder="Search shoppers..." oninput="filterWorkers()">
+                <select id="workerCategoryFilter" aria-label="Filter shoppers by zone" onchange="filterWorkers()">
+                    <option value="all">All zones</option><option value="plastics">Plastics</option><option value="kitting">Kitting</option><option value="textile">Textile</option>
+                </select>
+            </div>
             <div class="worker-grid" id="workerGrid"></div>
         </div>
     </div>
@@ -86,6 +99,7 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let toys = []; let pendingTasks = []; let workers = [];
+        const toyQuantities = new Map();
         let allWarehouseParts = [];
 
         async function initDashboard() {
@@ -101,15 +115,28 @@
                 .not('toy_name', 'ilike', 'Custom Request:%');
                 
             toys = data || [];
+            document.getElementById('toyFilter').innerHTML = '<option value="all">All toys</option>' + toys.map(toy => `<option value="${toy.id}">${toy.toy_name}</option>`).join('');
+            renderToys();
+        }
+
+        function renderToys() {
             const container = document.getElementById('toyCheckboxes');
-            container.innerHTML = ''; 
-            toys.forEach(toy => {
-                container.innerHTML += `
+            const query = document.getElementById('toySearch').value.trim().toLowerCase();
+            const selectedToy = document.getElementById('toyFilter').value;
+            const filteredToys = toys.filter(toy =>
+                (selectedToy === 'all' || String(toy.id) === selectedToy) &&
+                toy.toy_name.toLowerCase().includes(query)
+            );
+            container.innerHTML = filteredToys.length ? filteredToys.map(toy => `
                 <div class="toy-item">
                     <span class="toy-name-label">${toy.toy_name}</span>
-                    <input type="number" min="0" value="0" class="toy-qty-input" data-toy-id="${toy.id}">
-                </div>`;
-            });
+                    <input type="number" min="0" value="${toyQuantities.get(String(toy.id)) || 0}" class="toy-qty-input" data-toy-id="${toy.id}" oninput="toyQuantities.set(this.dataset.toyId, this.value)">
+                </div>`).join('') : '<div style="color:#999; font-size:12px; padding:10px;">No toys found.</div>';
+        }
+
+        function filterToys() {
+            document.querySelectorAll('.toy-qty-input').forEach(input => toyQuantities.set(input.dataset.toyId, input.value));
+            renderToys();
         }
 
         async function fetchState() {
@@ -292,7 +319,8 @@
                 await supabaseClient.from('tasks').insert(inserts);
             }
 
-            inputs.forEach(input => input.value = 0); 
+            inputs.forEach(input => input.value = 0);
+            toyQuantities.clear();
             fetchState();
         }
 
@@ -354,11 +382,17 @@
         function renderWorkers() {
             const grid = document.getElementById('workerGrid');
             const categoryOrder = ['plastics', 'kitting', 'textile'];
+            const query = document.getElementById('workerSearch').value.trim().toLowerCase();
+            const categoryFilter = document.getElementById('workerCategoryFilter').value;
             const sortedWorkers = [...workers].sort((a, b) => {
                 const categoryDifference = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
                 return categoryDifference || a.id - b.id;
             });
-            grid.innerHTML = sortedWorkers.map(w => {
+            const filteredWorkers = sortedWorkers.filter(w =>
+                w.worker_name.toLowerCase().includes(query) &&
+                (categoryFilter === 'all' || w.category === categoryFilter)
+            );
+            grid.innerHTML = filteredWorkers.length ? filteredWorkers.map(w => {
                 const isActive = w.status === 'Active';
                 const category = categoryOrder.includes(w.category) ? w.category : 'plastics';
                 const categoryLabel = `${category[0].toUpperCase() + category.slice(1)} Zone`;
@@ -372,8 +406,9 @@
                     <div class="worker-task">${isActive ? `Picking: ${w.currentTaskName}` : 'Waiting...'}</div>
                     ${isActive ? `<button class="btn-cancel" onclick="cancelWorkerTask(${w.id}, ${w.currentTaskId})">Cancel Assignment</button>` : ''}
                 </div>
-            `}).join('');
+            `}).join('') : '<div style="color:var(--text-muted); font-size:13px;">No shoppers found.</div>';
         }
+        function filterWorkers() { renderWorkers(); }
         window.onload = initDashboard;
     </script>
 </body>
