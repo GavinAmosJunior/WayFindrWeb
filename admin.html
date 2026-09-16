@@ -34,6 +34,22 @@
         .status-active { background: #dbeafe; color: #1e40af; }
         .worker-task { font-size: 13px; color: var(--text-muted); min-height: 20px; }
         .btn-cancel { background: #fef2f2; color: #ef4444; border: none; padding: 6px; font-size: 11px; border-radius: 6px; margin: 0; width: 100%;}
+        .analytics-card { grid-column: 1 / -1; }
+        .analytics-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+        .analytics-toolbar input { width: 80px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+        .analytics-toolbar button { width: auto; margin: 0; background: var(--dark-slate); color: white; border: none; }
+        .analytics-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+        .metric { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; min-width: 130px; }
+        .metric strong { display: block; font-size: 22px; color: var(--dark-slate); }
+        .metric span { font-size: 12px; color: var(--text-muted); }
+        .analytics-columns { display: grid; grid-template-columns: minmax(280px, 1.3fr) minmax(240px, 1fr); gap: 24px; }
+        .heatmap { position: relative; aspect-ratio: 66 / 49; min-height: 280px; border: 1px solid #cbd5e1; background: #f8fafc; overflow: hidden; }
+        .heat-cell { position: absolute; width: 1.7%; height: 1.7%; transform: translate(-50%, -50%); border-radius: 50%; }
+        .heatmap-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+        .analytics-list { max-height: 280px; overflow-y: auto; }
+        .analytics-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .recommendation { padding: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px; margin-bottom: 8px; font-size: 12px; }
+        @media (max-width: 900px) { .dashboard-grid, .analytics-columns { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -57,18 +73,83 @@
             <h2>3. Live Worker Status</h2>
             <div class="worker-grid" id="workerGrid"></div>
         </div>
+
+        <div class="card analytics-card">
+            <h2>4. Route Traffic Analysis</h2>
+            <div class="analytics-toolbar">
+                <label for="analyticsDays">Window (days)</label>
+                <input id="analyticsDays" type="number" min="1" max="365" value="30">
+                <button onclick="fetchAnalytics()">Refresh Analysis</button>
+                <span id="analyticsStatus" style="font-size:12px;color:var(--text-muted);"></span>
+            </div>
+            <div id="analyticsSummary" class="analytics-summary"></div>
+            <div class="analytics-columns">
+                <div>
+                    <strong>Warehouse traffic heatmap</strong>
+                    <div id="heatmap" class="heatmap" aria-label="Warehouse route traffic heatmap"></div>
+                    <div class="heatmap-legend"><span>Low traffic</span><span>High traffic</span></div>
+                </div>
+                <div>
+                    <strong>Most visited locators</strong>
+                    <div id="hotspotList" class="analytics-list"></div>
+                    <strong style="display:block;margin-top:18px;">Relocation candidates</strong>
+                    <div id="recommendationList" class="analytics-list"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const PYTHON_API_URL = 'http://localhost:8001';
 
         let toys = []; let pendingTasks = []; let workers = [];
 
         async function initDashboard() {
             await fetchToys(); await fetchState();
+            fetchAnalytics();
             setInterval(fetchState, 3000); 
+        }
+
+        async function fetchAnalytics() {
+            const days = Math.max(1, Math.min(365, Number(document.getElementById('analyticsDays').value) || 30));
+            const status = document.getElementById('analyticsStatus');
+            status.innerText = 'Loading...';
+            try {
+                const response = await fetch(`${PYTHON_API_URL}/api/analytics?days=${days}`);
+                if (!response.ok) throw new Error('Analytics request failed');
+                const data = await response.json();
+                renderAnalytics(data);
+                status.innerText = `Last ${days} days`;
+            } catch (error) {
+                status.innerText = 'Backend unavailable';
+            }
+        }
+
+        function renderAnalytics(data) {
+            const summary = data.summary;
+            document.getElementById('analyticsSummary').innerHTML = `
+                <div class="metric"><strong>${summary.total_routes}</strong><span>Routes generated</span></div>
+                <div class="metric"><strong>${summary.total_steps}</strong><span>Grid steps walked</span></div>
+                <div class="metric"><strong>${Number(summary.average_route_steps).toFixed(1)}</strong><span>Average steps / route</span></div>`;
+
+            const heatmap = document.getElementById('heatmap');
+            const maxVisits = Math.max(...data.heatmap.map(cell => cell.visits), 1);
+            heatmap.innerHTML = data.heatmap.map(cell => {
+                const intensity = cell.visits / maxVisits;
+                const color = `rgba(204, 0, 0, ${0.12 + intensity * 0.78})`;
+                const top = (48 - cell.y) / 49 * 100;
+                return `<span class="heat-cell" title="${cell.visits} visits" style="left:${cell.x / 66 * 100}%;top:${top}%;background:${color};box-shadow:0 0 ${4 + intensity * 8}px ${color};"></span>`;
+            }).join('');
+
+            document.getElementById('hotspotList').innerHTML = data.hotspot_locators.length
+                ? data.hotspot_locators.map(item => `<div class="analytics-row"><span>${item.locator_id}</span><strong>${item.visits} visits</strong></div>`).join('')
+                : '<p style="color:var(--text-muted);font-size:13px;">No route history in this window.</p>';
+            document.getElementById('recommendationList').innerHTML = data.recommendations.length
+                ? data.recommendations.map(item => `<div class="recommendation"><strong>${item.from_locator}</strong> &rarr; <strong>${item.suggested_locator}</strong><br>${item.visits} visits. ${item.reason}</div>`).join('')
+                : '<p style="color:var(--text-muted);font-size:13px;">No relocation candidates yet.</p>';
         }
 
         async function fetchToys() {

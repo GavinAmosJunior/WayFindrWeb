@@ -4,6 +4,10 @@ from pydantic import BaseModel
 from typing import List, Tuple
 import heapq
 from itertools import permutations
+from datetime import datetime, timedelta, timezone
+import json
+import os
+import sqlite3
 
 app = FastAPI(title="PickPath AI Routing Engine")
 
@@ -146,6 +150,116 @@ class WarehouseEngine:
 
 engine = WarehouseEngine()
 
+ANALYTICS_DB_PATH = os.getenv(
+    "ANALYTICS_DB_PATH",
+    os.path.join(os.path.dirname(__file__), "route_analytics.db"),
+)
+
+
+def get_analytics_connection():
+    connection = sqlite3.connect(ANALYTICS_DB_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def initialize_analytics_store():
+    with get_analytics_connection() as connection:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS route_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recorded_at TEXT NOT NULL,
+                route_json TEXT NOT NULL,
+                total_steps INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS route_cells (
+                run_id INTEGER NOT NULL,
+                x INTEGER NOT NULL,
+                y INTEGER NOT NULL,
+                visit_order INTEGER NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES route_runs(id)
+            );
+            CREATE TABLE IF NOT EXISTS route_locators (
+                run_id INTEGER NOT NULL,
+                locator_id TEXT NOT NULL,
+                stop_order INTEGER NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES route_runs(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_route_runs_recorded_at
+                ON route_runs(recorded_at);
+            CREATE INDEX IF NOT EXISTS idx_route_cells_run
+                ON route_cells(run_id);
+            CREATE INDEX IF NOT EXISTS idx_route_locators_run
+                ON route_locators(run_id);
+            """
+        )
+
+
+def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]]):
+    recorded_at = datetime.now(timezone.utc).isoformat()
+    cells = [point for leg in legs for point in leg]
+    with get_analytics_connection() as connection:
+        cursor = connection.execute(
+            "INSERT INTO route_runs (recorded_at, route_json, total_steps) VALUES (?, ?, ?)",
+            (recorded_at, json.dumps(sequence), len(cells)),
+        )
+        run_id = cursor.lastrowid
+        connection.executemany(
+            "INSERT INTO route_cells (run_id, x, y, visit_order) VALUES (?, ?, ?, ?)",
+            [(run_id, point[0], point[1], order) for order, point in enumerate(cells)],
+        )
+        connection.executemany(
+            "INSERT INTO route_locators (run_id, locator_id, stop_order) VALUES (?, ?, ?)",
+            [(run_id, locator, order) for order, locator in enumerate(sequence)],
+        )
+
+
+def locator_coordinate(locator_id: str) -> Tuple[int, int]:
+    parts = locator_id.split("-")
+    row_index = engine.row_map[parts[1]]
+    column = int(parts[2])
+    x = column if column <= 32 else column + 1
+    return x, row_index * 2 + 1
+
+
+def make_recommendations(locator_counts):
+    visited_locators = {row["locator_id"] for row in locator_counts}
+    candidates = []
+    for row_letter in engine.rows:
+        for column in range(1, 65):
+            if row_letter in engine.indented_rows and column in (1, 64):
+                continue
+            locator = f"LOC-{row_letter}-{column:03d}"
+            if locator in visited_locators:
+                continue
+            x, rack_y = locator_coordinate(locator)
+            access_y = rack_y - 1 if rack_y > 0 else rack_y + 1
+            candidates.append((abs(x - engine.entrance_coord[0]) + access_y, locator))
+
+    candidates.sort()
+    recommendations = []
+    for row in locator_counts[:10]:
+        current_x, current_y = locator_coordinate(row["locator_id"])
+        current_distance = abs(current_x - engine.entrance_coord[0]) + max(current_y - 1, 0)
+        closer = next(
+            (candidate for distance, candidate in candidates if distance < current_distance * 0.75),
+            None,
+        )
+        if closer:
+            recommendations.append(
+                {
+                    "from_locator": row["locator_id"],
+                    "suggested_locator": closer,
+                    "visits": row["visits"],
+                    "reason": "Frequently visited and the candidate is closer to the packing station.",
+                    "requires_inventory_check": True,
+                }
+            )
+    return recommendations[:5]
+
+
+initialize_analytics_store()
+
 class OptimizationRequest(BaseModel):
     locators: List[str]
 
@@ -155,6 +269,7 @@ def optimize_route(req: OptimizationRequest):
     base_locators = list(set([ "-".join(loc.split('-')[:3]) for loc in req.locators ]))
     
     sequence, legs = engine.optimize_sequence(base_locators)
+    record_route(sequence, legs)
     
     formatted_legs = [[{"x": pt[0], "y": pt[1]} for pt in leg] for leg in legs]
     
@@ -162,6 +277,73 @@ def optimize_route(req: OptimizationRequest):
         "status": "success",
         "optimized_sequence": sequence,
         "path_legs": formatted_legs
+    }
+
+
+@app.get("/api/analytics")
+def route_analytics(days: int = 30):
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 365")
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with get_analytics_connection() as connection:
+        route_summary = connection.execute(
+            """
+            SELECT COUNT(*) AS total_routes, COALESCE(SUM(total_steps), 0) AS total_steps,
+                   COALESCE(AVG(total_steps), 0) AS average_route_steps
+            FROM route_runs WHERE recorded_at >= ?
+            """,
+            (since,),
+        ).fetchone()
+        cell_counts = connection.execute(
+            """
+            SELECT x, y, COUNT(*) AS visits FROM route_cells
+            WHERE run_id IN (SELECT id FROM route_runs WHERE recorded_at >= ?)
+            GROUP BY x, y ORDER BY visits DESC
+            """,
+            (since,),
+        ).fetchall()
+        locator_counts = connection.execute(
+            """
+            SELECT locator_id, COUNT(*) AS visits FROM route_locators
+            WHERE locator_id != 'packingStation'
+              AND run_id IN (SELECT id FROM route_runs WHERE recorded_at >= ?)
+            GROUP BY locator_id ORDER BY visits DESC
+            """,
+            (since,),
+        ).fetchall()
+        latest_route = connection.execute(
+            """
+            SELECT route_json FROM route_runs
+            WHERE recorded_at >= ?
+            ORDER BY recorded_at DESC LIMIT 1
+            """,
+            (since,),
+        ).fetchone()
+        latest_cells = connection.execute(
+            """
+            SELECT x, y FROM route_cells
+            WHERE run_id = (
+                SELECT id FROM route_runs
+                WHERE recorded_at >= ?
+                ORDER BY recorded_at DESC LIMIT 1
+            )
+            ORDER BY visit_order
+            """,
+            (since,),
+        ).fetchall()
+
+    return {
+        "days": days,
+        "from": since,
+        "summary": dict(route_summary),
+        "heatmap": [dict(row) for row in cell_counts],
+        "latest_route": {
+            "sequence": json.loads(latest_route["route_json"]) if latest_route else [],
+            "path": [dict(row) for row in latest_cells],
+        },
+        "hotspot_locators": [dict(row) for row in locator_counts[:10]],
+        "recommendations": make_recommendations(locator_counts),
     }
 
 @app.get("/")
