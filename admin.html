@@ -34,6 +34,9 @@
         .parts-list { margin: 8px 0 0; padding-left: 18px; line-height: 1.6; }
         .btn-remove { background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; width: auto; margin:0;}
         
+        .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; margin-bottom: 10px; box-sizing: border-box; }
+        .part-result-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+
         .worker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .worker-card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
         .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; align-self: center; }
@@ -58,6 +61,11 @@
             <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Check the boxes for the toys you want to queue.</p>
             <div id="toyCheckboxes" class="toy-checkbox-container"><i>Loading toys...</i></div>
             <button class="btn-add" onclick="queueOrder()">Add Selection to Queue</button>
+
+            <h3 style="font-size: 14px; color: var(--dark-slate); margin-top: 25px; margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 15px;">Manual Part Request</h3>
+            <input type="text" id="skuSearch" class="search-input" placeholder="Search by SKU or Name..." oninput="searchParts()">
+            <div id="partSearchResults" class="toy-checkbox-container" style="display:none; max-height: 140px;"></div>
+            <button class="btn-add" style="background:#cc0000;" onclick="queueCustomParts()">Add Individual Parts to Queue</button>
         </div>
 
         <div class="card">
@@ -78,9 +86,12 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let toys = []; let pendingTasks = []; let workers = [];
+        let allWarehouseParts = [];
 
         async function initDashboard() {
-            await fetchToys(); await fetchState();
+            await fetchToys(); 
+            await fetchWarehouseParts();
+            await fetchState();
             setInterval(fetchState, 3000); 
         }
 
@@ -134,6 +145,80 @@
             }
             workers = workerData || []; 
             renderWorkers();
+        }
+
+        async function fetchWarehouseParts() {
+            const { data } = await supabaseClient.from('warehouse_parts').select('part_code, part_name, stock_quantity, category');
+            allWarehouseParts = data || [];
+        }
+
+        function searchParts() {
+            const query = document.getElementById('skuSearch').value.toUpperCase();
+            const container = document.getElementById('partSearchResults');
+            
+            if (query.length < 2) { container.style.display = 'none'; return; }
+            
+            const matches = allWarehouseParts.filter(p => 
+                p.part_code.toUpperCase().includes(query) || 
+                p.part_name.toUpperCase().includes(query)
+            );
+            
+            if (matches.length === 0) {
+                container.innerHTML = '<div style="color:#999; font-size:12px; padding:10px;">No parts found.</div>';
+            } else {
+                container.innerHTML = matches.map(p => `
+                    <div class="part-result-item">
+                        <div><strong>${p.part_code}</strong><br><span style="font-size:11px;color:#666;">${p.part_name}</span> <span style="font-size:11px;color:#10B981;">(${p.stock_quantity} in stock)</span></div>
+                        <input type="number" min="0" value="0" class="part-qty-input" data-sku="${p.part_code}" style="width:45px; padding:6px; border:1px solid #cbd5e1; border-radius:6px; text-align:center;">
+                    </div>
+                `).join('');
+            }
+            container.style.display = 'block';
+        }
+
+        async function queueCustomParts() {
+            const inputs = document.querySelectorAll('.part-qty-input');
+            const selectedParts = Array.from(inputs).filter(input => parseInt(input.value) > 0);
+            
+            if (selectedParts.length === 0) return alert('Please enter a quantity for at least one part.');
+
+            for (let input of selectedParts) {
+                const sku = input.dataset.sku;
+                const orderQty = parseInt(input.value);
+                const partData = allWarehouseParts.find(p => p.part_code === sku);
+
+                // Pre-flight stock check
+                if (orderQty > partData.stock_quantity) {
+                    alert(`INSUFFICIENT STOCK: Cannot order ${orderQty} of ${sku}. Only ${partData.stock_quantity} available.`);
+                    return; 
+                }
+
+                const customToyName = `Custom Request: ${sku}`;
+
+                let { data: existingToy } = await supabaseClient.from('preset_toys').select('id').eq('toy_name', customToyName).maybeSingle();
+                
+                let toyId;
+                if (existingToy) {
+                    toyId = existingToy.id;
+                } else {
+                    const { data: newToy } = await supabaseClient.from('preset_toys').insert([{ toy_name: customToyName }]).select('id').single();
+                    toyId = newToy.id;
+                    await supabaseClient.from('toy_bom').insert([{ toy_id: toyId, part_code: sku, qty_required: 1 }]);
+                }
+
+                await supabaseClient.from('tasks').insert([{
+                    toy_id: toyId,
+                    zone: partData.category,
+                    order_qty: orderQty
+                }]);
+            }
+
+            document.getElementById('skuSearch').value = '';
+            document.getElementById('partSearchResults').style.display = 'none';
+            inputs.forEach(input => input.value = 0);
+
+            fetchState();
+            fetchToys(); 
         }
 
         async function updateWorkerCategory(workerId, category) {
