@@ -96,7 +96,10 @@
         }
 
         async function fetchToys() {
-            const { data } = await supabaseClient.from('preset_toys').select('*');
+            const { data } = await supabaseClient.from('preset_toys')
+                .select('*')
+                .not('toy_name', 'ilike', 'Custom Request:%');
+                
             toys = data || [];
             const container = document.getElementById('toyCheckboxes');
             container.innerHTML = ''; 
