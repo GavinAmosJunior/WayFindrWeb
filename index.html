@@ -34,6 +34,8 @@
         .return-bin-table .part-cell { text-align: left; color: var(--dark-slate); }
         .return-bin-table .part-name { display: block; color: #666; font-size: 11px; margin-top: 3px; }
         .return-bin-table .suggested-locator-header { color: #cc0000; }
+        .return-bin-part-details { display: inline-block; }
+        .return-bin-remove { float: right; width: 24px; height: 24px; margin-left: 8px; color: #cc0000; background: transparent; border: 1px solid #cc0000; border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 20px; padding: 0; }
         .return-bin-controls { margin-top: 20px; }
         .return-bin-search-row { display: flex; align-items: center; gap: 8px; }
         .return-bin-search { flex: 1 1 auto; min-width: 0; height: 40px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
@@ -201,6 +203,7 @@
         let navIndex = -1; 
         let html5QrCode = null;
         let allWarehouseParts = [];
+        let relocationCandidates = [];
         let returnBinParts = [];
 
         function openReturnBin() {
@@ -214,6 +217,15 @@
         async function fetchReturnParts() {
             const { data } = await supabaseClient.from('warehouse_parts').select('part_code, part_name, stock_quantity, locator_id');
             allWarehouseParts = data || [];
+            try {
+                const response = await fetch(`${PYTHON_API_URL}/api/analytics?days=30`);
+                if (response.ok) {
+                    const analytics = await response.json();
+                    relocationCandidates = analytics.recommendations || [];
+                }
+            } catch (error) {
+                relocationCandidates = [];
+            }
         }
 
         function searchReturnParts() {
@@ -250,9 +262,11 @@
                 const part = allWarehouseParts.find(item => item.part_code === input.dataset.returnSku);
                 const quantity = parseInt(input.value, 10);
                 const existingPart = returnBinParts.find(item => item.part_code === part.part_code);
+                const relocation = relocationCandidates.find(item => item.part_code === part.part_code);
+                const suggestedLocator = relocation ? relocation.suggested_locator : '-';
 
                 if (existingPart) existingPart.quantity += quantity;
-                else returnBinParts.push({ part_code: part.part_code, part_name: part.part_name, quantity, locator_id: part.locator_id });
+                else returnBinParts.push({ part_code: part.part_code, part_name: part.part_name, quantity, suggested_locator: suggestedLocator });
             });
 
             renderReturnBin();
@@ -264,7 +278,12 @@
             const tableBody = document.querySelector('#returnBinPanel tbody');
             tableBody.innerHTML = returnBinParts.length === 0
                 ? '<tr id="returnBinEmptyRow"><td colspan="3">No parts in the return bin.</td></tr>'
-                : returnBinParts.map(part => `<tr><td class="part-cell"><strong>${part.part_code}</strong><span class="part-name">${part.part_name}</span></td><td>${part.quantity}</td><td>${part.locator_id || '--'}</td></tr>`).join('');
+                : returnBinParts.map(part => `<tr><td class="part-cell"><span class="return-bin-part-details"><strong>${part.part_code}</strong><span class="part-name">${part.part_name}</span></span><button class="return-bin-remove" onclick="removeReturnPart('${part.part_code}')" aria-label="Remove ${part.part_code}">&times;</button></td><td>${part.quantity}</td><td>${part.suggested_locator}</td></tr>`).join('');
+        }
+
+        function removeReturnPart(partCode) {
+            returnBinParts = returnBinParts.filter(part => part.part_code !== partCode);
+            renderReturnBin();
         }
 
         async function initApp() {
