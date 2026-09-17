@@ -43,6 +43,9 @@
         .metric strong { display: block; font-size: 22px; color: var(--dark-slate); }
         .metric span { font-size: 12px; color: var(--text-muted); }
         .analytics-columns { display: grid; grid-template-columns: minmax(280px, 1.3fr) minmax(240px, 1fr); gap: 24px; }
+        .heatmap-layout { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 6px; align-items: stretch; }
+        .locator-row-labels { position: relative; min-height: 280px; font-size: 10px; font-weight: bold; color: var(--text-muted); }
+        .locator-row-label { position: absolute; right: 0; transform: translateY(-50%); }
         .heatmap { position: relative; aspect-ratio: 66 / 49; min-height: 280px; border: 1px solid #cbd5e1; background: #f8fafc; overflow: hidden; }
         .heat-cell { position: absolute; width: 1.7%; height: 1.7%; transform: translate(-50%, -50%); border-radius: 50%; }
         .heatmap-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
@@ -86,7 +89,10 @@
             <div class="analytics-columns">
                 <div>
                     <strong>Warehouse traffic heatmap</strong>
-                    <div id="heatmap" class="heatmap" aria-label="Warehouse route traffic heatmap"></div>
+                    <div class="heatmap-layout">
+                        <div id="locatorRowLabels" class="locator-row-labels" aria-label="Locator rows"></div>
+                        <div id="heatmap" class="heatmap" aria-label="Warehouse route traffic heatmap"></div>
+                    </div>
                     <div class="heatmap-legend"><span>Low traffic</span><span>High traffic</span></div>
                 </div>
                 <div>
@@ -103,7 +109,7 @@
         const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const PYTHON_API_URL = 'http://localhost:8001';
+        const PYTHON_API_URL = 'http://localhost:8000';
 
         let toys = []; let pendingTasks = []; let workers = [];
 
@@ -134,6 +140,11 @@
                 <div class="metric"><strong>${summary.total_routes}</strong><span>Routes generated</span></div>
                 <div class="metric"><strong>${summary.total_steps}</strong><span>Grid steps walked</span></div>
                 <div class="metric"><strong>${Number(summary.average_route_steps).toFixed(1)}</strong><span>Average steps / route</span></div>`;
+
+            document.getElementById('locatorRowLabels').innerHTML = 'ABCDEFGHIJKLMNOPQRSTUVWX'.split('').map((row, index) => {
+                const top = (48 - (index * 2 + 1)) / 49 * 100;
+                return `<span class="locator-row-label" style="top:${top}%">${row}</span>`;
+            }).join('');
 
             const heatmap = document.getElementById('heatmap');
             const maxVisits = Math.max(...data.heatmap.map(cell => cell.visits), 1);
