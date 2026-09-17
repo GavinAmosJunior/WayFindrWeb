@@ -299,6 +299,8 @@ def make_recommendations(locator_counts):
                 {
                     "from_locator": row["locator_id"],
                     "suggested_locator": closer,
+                    "part_code": row["part_code"],
+                    "part_name": row["part_name"],
                     "visits": row["visits"],
                     "reason": "Frequently visited and the candidate is closer to the packing station.",
                     "requires_inventory_check": True,
