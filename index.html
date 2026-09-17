@@ -32,7 +32,7 @@
         
         .nav-item-name { color: #1E293B; font-size: 20px; margin: 0 0 4px 0; font-weight: bold; line-height: 1.2; }
         .nav-item-sku { color: var(--primary-blue); font-size: 14px; margin: 0 0 15px 0; font-weight: 600; }
-        /* Route Metrics */
+        /* Displays the calculated route distance and walking time. */
         .route-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 16px; }
         .route-metric { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
         .route-metric-label { display: block; color: #64748b; font-size: 10px; font-weight: bold; text-transform: uppercase; }
@@ -105,7 +105,7 @@
             </div>
             <h2 id="navItemName" class="nav-item-name">Warehouse Scan</h2>
             <p id="navItemSku" class="nav-item-sku">Ready to begin</p>
-            /*tak ganti*/
+            <!-- Route estimates are filled after the backend calculates the route. -->
             <div class="route-metrics">
                 <div class="route-metric">
                     <span class="route-metric-label">Est. Distance</span>
@@ -234,10 +234,10 @@
                 result.optimized_sequence.forEach(loc => routeSequence.push(`rack-${loc.split('-')[1]}-${loc.split('-')[2]}`));
                 routeSequence.push('packingStation');
                 
-                // Validate and process path legs
+                // Keep only valid path data before calculating the route summary.
                 pathLegs = Array.isArray(result.path_legs) ? result.path_legs : [];
                 const apiDistance = Number(result.distance_meters ?? result.total_distance);
-                // Calculate total steps from path legs if API distance is not provided
+                // Calculate distance from path coordinates when the API has no distance field.
                 const calculatedSteps = pathLegs.reduce((routeTotal, leg) => {
                     if (!Array.isArray(leg)) return routeTotal;
                     return routeTotal + leg.reduce((legTotal, point, index) => {
@@ -264,7 +264,7 @@
                 document.getElementById('navModePanel').style.display = 'flex';
                 document.getElementById('mapContainer').classList.add('nav-mode');
                 
-                // Initial UI update and draw
+                // Show the overview panel, then draw the complete route after layout updates.
                 updateNavUI();
                 requestAnimationFrame(() => drawCanvasLines(-1));
 
@@ -442,18 +442,19 @@
             
             const drawLeg = (leg) => {
                 if (!leg || leg.length === 0) return;
-                ctx.beginPath(); // Start a new path
+                ctx.beginPath();
                 ctx.moveTo(getLogicalX(leg[0].x), getLogicalY(leg[0].y));
                 for(let i = 1; i < leg.length; i++) ctx.lineTo(getLogicalX(leg[i].x), getLogicalY(leg[i].y));
-                ctx.strokeStyle = activeStep === -1 ? 'rgba(37, 99, 235, 0.72)' : '#2563EB'; // Blue for active step, lighter for overview
-                ctx.lineWidth = activeStep === -1 ? 3 : 4; / / Thicker for active step
-                ctx.lineJoin = 'round'; // Smooth corners
-                ctx.lineCap = 'round'; // Smooth line endings
-                ctx.shadowColor = activeStep === -1 ? 'transparent' : 'rgba(37, 99, 235, 0.35)'; // Shadow for active step
-                ctx.shadowBlur = activeStep === -1 ? 0 : 5; // Shadow blur for active step
+                ctx.strokeStyle = activeStep === -1 ? 'rgba(37, 99, 235, 0.72)' : '#2563EB';
+                ctx.lineWidth = activeStep === -1 ? 3 : 4;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.shadowColor = activeStep === -1 ? 'transparent' : 'rgba(37, 99, 235, 0.35)';
+                ctx.shadowBlur = activeStep === -1 ? 0 : 5;
                 ctx.stroke();
             };
-            if (activeStep === -1) pathLegs.forEach(drawLeg); // Draw all legs for overview
+            // Overview shows every leg; navigation mode shows only the current leg.
+            if (activeStep === -1) pathLegs.forEach(drawLeg);
             else drawLeg(pathLegs[activeStep]);
         }
 

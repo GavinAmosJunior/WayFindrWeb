@@ -155,7 +155,7 @@ def optimize_route(req: OptimizationRequest):
     base_locators = list(set([ "-".join(loc.split('-')[:3]) for loc in req.locators ]))
     
     sequence, legs, total_grid_steps = engine.optimize_sequence(base_locators)
-    grid_step_meters = 1 #tak ganti
+    grid_step_meters = 0.725 #tak ganti
     walking_speed_mps = 1.4 # tak ganti
     pick_time_seconds = 90 # tak ganti
     distance_meters = total_grid_steps * grid_step_meters # tak ganti
