@@ -7,10 +7,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root { --bg-color: #f4f5f7; --card-bg: #ffffff; --primary-red: #cc0000; --dark-slate: #0F172A; --text-main: #1E293B; --text-muted: #64748B; }
-        body { margin: 0; padding: 30px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); color: var(--text-main); }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        .header h1 { margin: 0; color: var(--dark-slate); font-size: 28px; }
-        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 24px; }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); color: var(--text-main); }
+        .header { display: flex; justify-content: space-between; align-items: center; min-height: 76px; padding: 0 30px; margin-bottom: 30px; background: var(--primary-red); box-shadow: 0 3px 10px rgba(127, 0, 0, 0.2); }
+        .header h1 { margin: 0; color: white; font-size: 26px; letter-spacing: 0.2px; }
+        .mattel-logo-badge { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; padding: 3px; box-sizing: border-box; border-radius: 50%; background: white; box-shadow: 0 2px 5px rgba(90, 0, 0, 0.2); }
+        .mattel-logo-badge img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 24px; padding: 0 30px 30px; }
         .card { background: var(--card-bg); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; flex-direction: column; }
         .card h2 { margin-top: 0; font-size: 18px; color: var(--primary-red); border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; }
         
@@ -84,7 +86,12 @@
     </style>
 </head>
 <body>
-    <div class="header"><h1>Admin Dashboard</h1></div>
+    <header class="header">
+        <h1>Admin Dashboard</h1>
+        <div class="mattel-logo-badge">
+            <img src="assets/images-2%20Background%20Removed.png" alt="Mattel">
+        </div>
+    </header>
     <div class="dashboard-grid">
         
         <div class="card">
