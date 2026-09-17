@@ -222,9 +222,6 @@
                     qty: b.qty_required * task.order_qty // MULTIPLY BY ORDER QUANTITY HERE
                 }));
 
-            const estMins = Math.ceil(currentPickList.length * 1.5);
-            document.getElementById('estTimeBadge').innerText = `Est. Time: ~${estMins} Mins (1.5m per pick)`;
-
             list.innerHTML = '';
             currentPickList.forEach(part => {
                 list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.locator_id}</strong> <span style="font-size:12px;color:#8b5cf6;font-weight:600;">(SKU: ${part.part_code})</span><br><span style="font-size:12px;color:#666;">${part.part_name}</span><br><span style="font-size:13px;color:#ef4444;font-weight:bold;">&#10148; Quantity to Pick: ${part.qty}</span></div></div>`;
