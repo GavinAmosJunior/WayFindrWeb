@@ -21,32 +21,29 @@ app.add_middleware(
 
 class WarehouseEngine:
     def __init__(self):
-        # Grid Size: X from 1 to 65, Y from 0 to 48.
-        # Y=0 is the Packing Station Aisle. Y=1 is Row A... Y=48 is Aisle above Row X.
+        #X from 1 to 65, Y from 0 to 48
+        #Row A starting from 1-48, packing is at 0
         self.rows = "ABCDEFGHIJKLMNOPQRSTUVWX"
         self.row_map = {c: i for i, c in enumerate(self.rows)}
         self.indented_rows = {'B', 'D', 'F', 'H', 'J', 'L', 'N', 'P', 'R', 'T', 'V', 'X'}
-        self.entrance_coord = (33, 0) # Center Aisle, Bottom
+        self.entrance_coord = (33, 0)
         
-        # Build Logical Grid (0 = walkable aisle/gap, 1 = solid rack obstacle)
         self.costmap = [[0 for _ in range(49)] for _ in range(66)]
         self.build_obstacles()
 
     def build_obstacles(self):
-        """Strictly enforces perimeter walls and rack obstacles."""
         for r_idx, r_letter in enumerate(self.rows):
-            y = r_idx * 2 + 1 # Racks live on odd Y coordinates (1, 3, 5...)
+            y = r_idx * 2 + 1 #making shelves with gaps
             for c in range(1, 65):
-                # Implement Serpentine Logic: Leave gaps at outer edges for indented rows
+                #empty an edge shelf for every indent
                 if r_letter in self.indented_rows and (c == 1 or c == 64):
                     continue
                 
-                # X=33 is reserved for the Center Walkway. Skip it.
+                #make the hallway
                 x = c if c <= 32 else c + 1 
                 self.costmap[x][y] = 1
 
     def get_access_points(self, locator_id: str) -> List[Tuple[int, int]]:
-        """Finds the walkable aisle spaces immediately above or below a target rack."""
         parts = locator_id.split('-')
         row_letter = parts[1]
         col_num = int(parts[2])
@@ -55,14 +52,13 @@ class WarehouseEngine:
         x = col_num if col_num <= 32 else col_num + 1
         
         access = []
-        # Check aisle below
+        #check aisle below
         if 0 <= y - 1 <= 48 and self.costmap[x][y - 1] == 0: access.append((x, y - 1))
-        # Check aisle above
+        #check aisle above
         if 0 <= y + 1 <= 48 and self.costmap[x][y + 1] == 0: access.append((x, y + 1))
         return access
 
     def a_star(self, start: Tuple[int, int], target: Tuple[int, int]):
-        """Strict Orthogonal pathfinding ensuring paths never pass through obstacles."""
         open_set = []
         heapq.heappush(open_set, (0, start))
         came_from = {}
@@ -80,14 +76,13 @@ class WarehouseEngine:
                 path.reverse()
                 return path, g_score[target]
                 
-            # Strict Orthogonal movement only (No Diagonals)
+            #only x and y movements
             for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
                 nx, ny = current[0] + dx, current[1] + dy
                 
-                # Strict Grid Boundaries
                 if 1 <= nx <= 65 and 0 <= ny <= 48:
                     if self.costmap[nx][ny] == 1:
-                        continue # Cannot clip through rack
+                        continue
                         
                     tentative_g = g_score[current] + 1
                     if (nx, ny) not in g_score or tentative_g < g_score[(nx, ny)]:
@@ -100,14 +95,20 @@ class WarehouseEngine:
 
     def optimize_sequence(self, locators: List[str]):
         if not locators: 
-            return [], []
+            return [], [], 0 #tak ganti
 
-        nodes = locators
         best_overall_cost = float('inf')
         best_overall_sequence = []
         best_overall_legs = []
+        path_cache = {}
 
-        for perm in permutations(nodes):
+        def route(start, target):
+            key = (start, target)
+            if key not in path_cache:
+                path_cache[key] = self.a_star(start, target)
+            return path_cache[key]
+
+        for perm in permutations(locators):
             current_states = [(self.entrance_coord, 0, [])]
             
             for loc in perm:
@@ -120,7 +121,7 @@ class WarehouseEngine:
                     best_prev_state = None
                     
                     for prev_coord, prev_cost, prev_legs in current_states:
-                        path, cost = self.a_star(prev_coord, target_acc)
+                        path, cost = route(prev_coord, target_acc)
                         if cost < best_step_cost:
                             best_step_cost = cost
                             best_step_leg = path
@@ -135,9 +136,9 @@ class WarehouseEngine:
                 
                 current_states = next_states
 
-            # Return back to Packing Station (33, 0)
+            #return back to packing station
             for prev_coord, prev_cost, prev_legs in current_states:
-                path, cost = self.a_star(prev_coord, self.entrance_coord)
+                path, cost = route(prev_coord, self.entrance_coord)
                 total_cost = prev_cost + cost
                 total_legs = prev_legs + [path]
                 
@@ -146,7 +147,7 @@ class WarehouseEngine:
                     best_overall_sequence = perm
                     best_overall_legs = total_legs
 
-        return list(best_overall_sequence), best_overall_legs
+        return list(best_overall_sequence), best_overall_legs, best_overall_cost
 
 engine = WarehouseEngine()
 
@@ -266,17 +267,23 @@ class OptimizationRequest(BaseModel):
 @app.post("/api/optimize")
 def optimize_route(req: OptimizationRequest):
     if not req.locators: raise HTTPException(status_code=400, detail="List cannot be empty")
-    base_locators = list(set([ "-".join(loc.split('-')[:3]) for loc in req.locators ]))
-    
-    sequence, legs = engine.optimize_sequence(base_locators)
+    base_locators = {"-".join(loc.split('-')[:3]) for loc in req.locators}
     record_route(sequence, legs)
+    sequence, legs, total_grid_steps = engine.optimize_sequence(base_locators)
+    grid_step_meters = 0.725
+    walking_speed_mps = 1.4 
+    pick_time_seconds = 90 
+    distance_meters = total_grid_steps * grid_step_meters
+    estimated_time_seconds = (distance_meters / walking_speed_mps) + (len(sequence) * pick_time_seconds)
     
     formatted_legs = [[{"x": pt[0], "y": pt[1]} for pt in leg] for leg in legs]
     
     return {
         "status": "success",
         "optimized_sequence": sequence,
-        "path_legs": formatted_legs
+        "path_legs": formatted_legs,
+        "distance_meters": distance_meters,
+        "estimated_time_seconds": round(estimated_time_seconds)
     }
 
 
