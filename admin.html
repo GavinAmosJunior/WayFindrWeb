@@ -49,7 +49,16 @@
         .analytics-list { max-height: 280px; overflow-y: auto; }
         .analytics-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
         .recommendation { padding: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px; margin-bottom: 8px; font-size: 12px; }
-        @media (max-width: 900px) { .dashboard-grid, .analytics-columns { grid-template-columns: 1fr; } }
+        .slotting-card { grid-column: 1 / -1; }
+        .slotting-form { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto; gap: 12px; align-items: end; }
+        .slotting-field { display: flex; flex-direction: column; gap: 6px; }
+        .slotting-field label { font-size: 12px; color: var(--text-muted); font-weight: bold; }
+        .slotting-field input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; margin: 0; font-size: 14px; }
+        .slotting-field select { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; margin: 0; font-size: 14px; }
+        .slotting-preview { margin-top: 14px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 13px; color: var(--text-muted); }
+        .btn-slot { background: #059669; color: white; border: none; margin: 0; width: auto; }
+        .slotting-status { font-size: 12px; color: var(--text-muted); margin-top: 10px; min-height: 16px; }
+        @media (max-width: 900px) { .dashboard-grid, .analytics-columns { grid-template-columns: 1fr; } .slotting-form { grid-template-columns: 1fr; } .btn-slot { width: 100%; } }
     </style>
 </head>
 <body>
@@ -74,8 +83,33 @@
             <div class="worker-grid" id="workerGrid"></div>
         </div>
 
+        <div class="card slotting-card">
+            <h2>4. Manual Product Slotting</h2>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 0;">Move a part to a new warehouse locator. New routes will use the saved position.</p>
+            <div class="slotting-form">
+                <div class="slotting-field">
+                    <label for="slotPartSearch">Find part by serial number</label>
+                    <input id="slotPartSearch" list="slotPartSuggestions" placeholder="e.g. CTRA1-X-015" oninput="findPartBySearch()">
+                    <datalist id="slotPartSuggestions"></datalist>
+                    <label for="slotPart" style="margin-top:4px;">Or choose a part</label>
+                    <select id="slotPart" onchange="updateSlotPreview()"><option value="">Loading parts...</option></select>
+                </div>
+                <div class="slotting-field">
+                    <label for="slotDestination">New locator</label>
+                    <select id="slotDestination" onchange="updateSlotPreview()"></select>
+                </div>
+                <div class="slotting-field">
+                    <label>Current position</label>
+                    <div id="slotCurrent" class="slotting-preview" style="margin:0;">Select a part</div>
+                </div>
+                <button class="btn-slot" onclick="saveSlotting()">Save Position</button>
+            </div>
+            <div id="slottingPreview" class="slotting-preview">Choose a part and destination to preview the distance from the packing station.</div>
+            <div id="slottingStatus" class="slotting-status"></div>
+        </div>
+
         <div class="card analytics-card">
-            <h2>4. Route Traffic Analysis</h2>
+            <h2>5. Route Traffic Analysis</h2>
             <div class="analytics-toolbar">
                 <label for="analyticsDays">Window (days)</label>
                 <input id="analyticsDays" type="number" min="1" max="365" value="30">
@@ -92,7 +126,7 @@
                 <div>
                     <strong>Most visited locators</strong>
                     <div id="hotspotList" class="analytics-list"></div>
-                    <strong style="display:block;margin-top:18px;">Relocation candidates</strong>
+                    <strong style="display:block;margin-top:18px;">Frequent parts to relocate</strong>
                     <div id="recommendationList" class="analytics-list"></div>
                 </div>
             </div>
@@ -103,9 +137,9 @@
         const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const PYTHON_API_URL = 'http://localhost:8001';
+        const PYTHON_API_URL = 'https://wayfindrengine.onrender.com';
 
-        let toys = []; let pendingTasks = []; let workers = [];
+        let toys = []; let pendingTasks = []; let workers = []; let warehouseParts = [];
 
         async function initDashboard() {
             await fetchToys(); await fetchState();
@@ -147,9 +181,14 @@
             document.getElementById('hotspotList').innerHTML = data.hotspot_locators.length
                 ? data.hotspot_locators.map(item => `<div class="analytics-row"><span>${item.locator_id}</span><strong>${item.visits} visits</strong></div>`).join('')
                 : '<p style="color:var(--text-muted);font-size:13px;">No route history in this window.</p>';
-            document.getElementById('recommendationList').innerHTML = data.recommendations.length
-                ? data.recommendations.map(item => `<div class="recommendation"><strong>${item.from_locator}</strong> &rarr; <strong>${item.suggested_locator}</strong><br>${item.visits} visits. ${item.reason}</div>`).join('')
-                : '<p style="color:var(--text-muted);font-size:13px;">No relocation candidates yet.</p>';
+            const partRecommendations = data.part_recommendations || [];
+            document.getElementById('recommendationList').innerHTML = partRecommendations.length
+                ? partRecommendations.map(item => {
+                    const part = warehouseParts.find(candidate => candidate.part_code === item.part_code);
+                    const suggestedSlot = findNearestEmptySlot(item.locator_id);
+                    return `<div class="recommendation"><strong>${part ? part.part_name : item.part_code}</strong> <span style="color:var(--text-muted);">(${item.part_code})</span><br>${item.visits} route visits from <strong>${item.locator_id}</strong>.<br>${suggestedSlot ? `Recommended empty slot: <strong>${suggestedSlot}</strong>` : 'No empty slot found.'}</div>`;
+                }).join('')
+                : '<p style="color:var(--text-muted);font-size:13px;">No part-level route history yet. Generate a new route to start recommendations.</p>';
         }
 
         async function fetchToys() {
@@ -160,6 +199,112 @@
             toys.forEach(toy => {
                 container.innerHTML += `<label class="toy-label"><input type="checkbox" value="${toy.id}" class="toy-checkbox" style="margin-right: 8px;">${toy.toy_name}</label>`;
             });
+        }
+
+        function buildSlotDestinations() {
+            const destination = document.getElementById('slotDestination');
+            const rows = 'ABCDEFGHIJKLMNOPQRSTUVWX';
+            destination.innerHTML = '<option value="">Choose a locator...</option>';
+            rows.split('').forEach(row => {
+                for (let column = 1; column <= 64; column++) {
+                    if ('BDFHJLNPRTVX'.includes(row) && (column === 1 || column === 64)) continue;
+                    destination.innerHTML += `<option value="CTRA1-${row}-${String(column).padStart(3, '0')}">CTRA1-${row}-${String(column).padStart(3, '0')}</option>`;
+                }
+            });
+        }
+
+        async function fetchWarehouseParts() {
+            const { data, error } = await supabaseClient.from('warehouse_parts').select('*').order('part_name');
+            const select = document.getElementById('slotPart');
+            if (error) {
+                select.innerHTML = '<option value="">Unable to load parts</option>';
+                document.getElementById('slottingStatus').innerText = error.message;
+                return;
+            }
+            warehouseParts = data || [];
+            document.getElementById('slotPartSuggestions').innerHTML = warehouseParts
+                .flatMap(part => partIdentifiers(part))
+                .filter((value, index, values) => value && values.indexOf(value) === index)
+                .map(value => `<option value="${value}"></option>`).join('');
+            select.innerHTML = warehouseParts.length
+                ? '<option value="">Choose a part...</option>' + warehouseParts.map(part => `<option value="${part.id}">${part.part_name} (${part.locator_id})</option>`).join('')
+                : '<option value="">No parts found</option>';
+        }
+
+        function partIdentifiers(part) {
+            return [part.serial_number, part.serial, part.part_number, part.part_code, part.sku, part.locator_id, part.part_name]
+                .filter(value => value !== null && value !== undefined)
+                .map(value => String(value));
+        }
+
+        function findPartBySearch() {
+            const query = document.getElementById('slotPartSearch').value.trim().toLowerCase();
+            const part = warehouseParts.find(item => partIdentifiers(item).some(identifier => identifier.toLowerCase() === query));
+            document.getElementById('slotPart').value = part ? String(part.id) : '';
+            updateSlotPreview();
+            if (query && !part) document.getElementById('slottingStatus').innerText = 'No exact part found yet. Continue typing or choose from the list.';
+            else if (part) document.getElementById('slottingStatus').innerText = `Selected ${part.part_name}.`;
+        }
+
+        function locatorDistance(locator) {
+            const match = /(?:^|-)([A-X])-(\d{3})(?:-|$)/.exec(locator || '');
+            if (!match) return null;
+            const row = match[1].charCodeAt(0) - 65;
+            const column = Number(match[2]);
+            const x = column <= 32 ? column : column + 1;
+            return Math.abs(x - 33) + row * 2;
+        }
+
+        function canonicalLocator(locator) {
+            const match = /^(?:CTRA1|LOC)-([A-X])-(\d{3})/.exec(locator || '');
+            return match ? `CTRA1-${match[1]}-${match[2]}` : locator;
+        }
+
+        function findNearestEmptySlot(currentLocator) {
+            const occupied = new Set(warehouseParts.map(part => canonicalLocator(part.locator_id)));
+            const current = canonicalLocator(currentLocator);
+            const candidates = [];
+            for (const row of 'ABCDEFGHIJKLMNOPQRSTUVWX') {
+                for (let column = 1; column <= 64; column++) {
+                    if ('BDFHJLNPRTVX'.includes(row) && (column === 1 || column === 64)) continue;
+                    const candidate = `CTRA1-${row}-${String(column).padStart(3, '0')}`;
+                    if (candidate === current || occupied.has(candidate)) continue;
+                    candidates.push(candidate);
+                }
+            }
+            candidates.sort((left, right) => locatorDistance(left) - locatorDistance(right));
+            return candidates[0] || null;
+        }
+
+        function updateSlotPreview() {
+            const part = warehouseParts.find(item => String(item.id) === document.getElementById('slotPart').value);
+            const destination = document.getElementById('slotDestination').value;
+            document.getElementById('slotCurrent').innerText = part ? part.locator_id : 'Select a part';
+            if (!part || !destination) {
+                document.getElementById('slottingPreview').innerText = 'Choose a part and destination to preview the distance from the packing station.';
+                return;
+            }
+            const currentDistance = locatorDistance(part.locator_id);
+            const newDistance = locatorDistance(destination);
+            const change = newDistance - currentDistance;
+            const direction = change < 0 ? `${Math.abs(change)} aisle steps closer` : change > 0 ? `${change} aisle steps farther` : 'the same estimated distance';
+            document.getElementById('slottingPreview').innerText = `${part.part_name}: ${part.locator_id} -> ${destination}. This position is ${direction} from the packing station.`;
+        }
+
+        async function saveSlotting() {
+            const part = warehouseParts.find(item => String(item.id) === document.getElementById('slotPart').value);
+            const destination = document.getElementById('slotDestination').value;
+            const status = document.getElementById('slottingStatus');
+            if (!part || !destination) { status.innerText = 'Select a part and destination first.'; return; }
+            const occupiedBy = warehouseParts.find(item => String(item.id) !== String(part.id) && item.locator_id === destination);
+            if (occupiedBy) { status.innerText = `${destination} is already assigned to ${occupiedBy.part_name}.`; return; }
+            status.innerText = 'Saving...';
+            const { error } = await supabaseClient.from('warehouse_parts').update({ locator_id: destination }).eq('id', part.id);
+            if (error) { status.innerText = `Could not save: ${error.message}`; return; }
+            part.locator_id = destination;
+            document.getElementById('slotPart').querySelector(`option[value="${part.id}"]`).textContent = `${part.part_name} (${destination})`;
+            status.innerText = `Saved ${part.part_name} at ${destination}.`;
+            updateSlotPreview();
         }
 
         async function fetchState() {
@@ -239,7 +384,7 @@
                 </div>
             `}).join('');
         }
-        window.onload = initDashboard;
+        window.onload = () => { buildSlotDestinations(); fetchWarehouseParts(); initDashboard(); };
     </script>
 </body>
 </html>

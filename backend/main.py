@@ -191,11 +191,22 @@ def initialize_analytics_store():
                 ON route_cells(run_id);
             CREATE INDEX IF NOT EXISTS idx_route_locators_run
                 ON route_locators(run_id);
+            CREATE TABLE IF NOT EXISTS route_parts (
+                run_id INTEGER NOT NULL,
+                part_code TEXT NOT NULL,
+                locator_id TEXT NOT NULL,
+                stop_order INTEGER NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES route_runs(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_route_parts_run
+                ON route_parts(run_id);
+            CREATE INDEX IF NOT EXISTS idx_route_parts_code
+                ON route_parts(part_code);
             """
         )
 
 
-def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]]):
+def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]], items=None):
     recorded_at = datetime.now(timezone.utc).isoformat()
     cells = [point for leg in legs for point in leg]
     with get_analytics_connection() as connection:
@@ -212,6 +223,15 @@ def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]]):
             "INSERT INTO route_locators (run_id, locator_id, stop_order) VALUES (?, ?, ?)",
             [(run_id, locator, order) for order, locator in enumerate(sequence)],
         )
+        if items:
+            connection.executemany(
+                "INSERT INTO route_parts (run_id, part_code, locator_id, stop_order) VALUES (?, ?, ?, ?)",
+                [
+                    (run_id, item["part_code"], item["locator_id"], order)
+                    for order, item in enumerate(items)
+                    if item.get("part_code") and item.get("locator_id")
+                ],
+            )
 
 
 def locator_coordinate(locator_id: str) -> Tuple[int, int]:
@@ -229,7 +249,7 @@ def make_recommendations(locator_counts):
         for column in range(1, 65):
             if row_letter in engine.indented_rows and column in (1, 64):
                 continue
-            locator = f"LOC-{row_letter}-{column:03d}"
+            locator = f"CTRA1-{row_letter}-{column:03d}"
             if locator in visited_locators:
                 continue
             x, rack_y = locator_coordinate(locator)
@@ -261,15 +281,18 @@ def make_recommendations(locator_counts):
 initialize_analytics_store()
 
 class OptimizationRequest(BaseModel):
-    locators: List[str]
+    locators: List[str] = []
+    items: List[dict] = []
 
 @app.post("/api/optimize")
 def optimize_route(req: OptimizationRequest):
-    if not req.locators: raise HTTPException(status_code=400, detail="List cannot be empty")
-    base_locators = list(set([ "-".join(loc.split('-')[:3]) for loc in req.locators ]))
+    requested_items = [item for item in req.items if item.get("locator_id")]
+    requested_locators = req.locators or [item["locator_id"] for item in requested_items]
+    if not requested_locators: raise HTTPException(status_code=400, detail="List cannot be empty")
+    base_locators = list(set([ "-".join(loc.split('-')[:3]) for loc in requested_locators ]))
     
     sequence, legs = engine.optimize_sequence(base_locators)
-    record_route(sequence, legs)
+    record_route(sequence, legs, requested_items)
     
     formatted_legs = [[{"x": pt[0], "y": pt[1]} for pt in leg] for leg in legs]
     
@@ -312,6 +335,16 @@ def route_analytics(days: int = 30):
             """,
             (since,),
         ).fetchall()
+        part_counts = connection.execute(
+            """
+            SELECT part_code, locator_id, COUNT(*) AS visits
+            FROM route_parts
+            WHERE run_id IN (SELECT id FROM route_runs WHERE recorded_at >= ?)
+            GROUP BY part_code, locator_id
+            ORDER BY visits DESC
+            """,
+            (since,),
+        ).fetchall()
         latest_route = connection.execute(
             """
             SELECT route_json FROM route_runs
@@ -342,6 +375,7 @@ def route_analytics(days: int = 30):
             "sequence": json.loads(latest_route["route_json"]) if latest_route else [],
             "path": [dict(row) for row in latest_cells],
         },
+        "part_recommendations": [dict(row) for row in part_counts[:20]],
         "hotspot_locators": [dict(row) for row in locator_counts[:10]],
         "recommendations": make_recommendations(locator_counts),
     }
