@@ -1,3 +1,5 @@
+*.py[cod]
+backend/route_analytics.db
 wayenv/
 */__pycache__/
 __pycache__
