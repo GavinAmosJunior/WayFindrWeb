@@ -44,6 +44,7 @@
         .return-bin-part-result:last-child { border-bottom: none; }
         .return-bin-part-result input { width: 45px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; }
         .return-bin-add { flex: 0 0 auto; width: 96px; height: 40px; box-sizing: border-box; background: #cc0000; color: white; border: none; border-radius: 8px; padding: 10px 12px; cursor: pointer; font-size: 14px; font-weight: bold; white-space: nowrap; }
+        .return-trip-btn { background: #0F172A; color: white; border: none; width: 100%; padding: 14px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 15px; margin-top: 14px; }
 
         .start-nav-btn { background: var(--dark-slate); color: white; border: none; width: 100%; padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; display: none; }
 
@@ -177,6 +178,7 @@
                 <button class="return-bin-add" onclick="addReturnParts()">Add Part</button>
             </div>
             <div id="returnPartSearchResults" class="return-bin-search-results"></div>
+            <button class="return-trip-btn" onclick="startReturnTrip()">Start Return Trip</button>
         </div>
     </div>
 
@@ -195,6 +197,7 @@
         let currentExpectedSku = "";
         let currentExpectedLocation = ""; 
         let currentScanPhase = "location";
+        const scanPhaseTransitionDelayMs = 1200;
         
         let scannedSteps = new Set();
         
@@ -205,6 +208,8 @@
         let allWarehouseParts = [];
         let relocationCandidates = [];
         let returnBinParts = [];
+        let isReturnTrip = false;
+        let returnTripParts = [];
 
         function openReturnBin() {
             document.getElementById('returnBinPanel').style.display = 'block';
@@ -266,7 +271,7 @@
                 const suggestedLocator = relocation ? relocation.suggested_locator : '-';
 
                 if (existingPart) existingPart.quantity += quantity;
-                else returnBinParts.push({ part_code: part.part_code, part_name: part.part_name, quantity, suggested_locator: suggestedLocator });
+                else returnBinParts.push({ part_code: part.part_code, part_name: part.part_name, quantity, locator_id: part.locator_id, suggested_locator: suggestedLocator });
             });
 
             renderReturnBin();
@@ -278,12 +283,69 @@
             const tableBody = document.querySelector('#returnBinPanel tbody');
             tableBody.innerHTML = returnBinParts.length === 0
                 ? '<tr id="returnBinEmptyRow"><td colspan="3">No parts in the return bin.</td></tr>'
-                : returnBinParts.map(part => `<tr><td class="part-cell"><span class="return-bin-part-details"><strong>${part.part_code}</strong><span class="part-name">${part.part_name}</span></span><button class="return-bin-remove" onclick="removeReturnPart('${part.part_code}')" aria-label="Remove ${part.part_code}">&times;</button></td><td>${part.quantity}</td><td>${part.suggested_locator}</td></tr>`).join('');
+                : returnBinParts.map(part => `<tr><td class="part-cell"><input type="checkbox" checked data-return-selected="${part.part_code}" aria-label="Return ${part.part_code}"><span class="return-bin-part-details"><strong>${part.part_code}</strong><span class="part-name">${part.part_name}</span></span><button class="return-bin-remove" onclick="removeReturnPart('${part.part_code}')" aria-label="Remove ${part.part_code}">&times;</button></td><td>${part.quantity}</td><td>${part.suggested_locator}</td></tr>`).join('');
         }
 
         function removeReturnPart(partCode) {
             returnBinParts = returnBinParts.filter(part => part.part_code !== partCode);
             renderReturnBin();
+        }
+
+        async function startReturnTrip() {
+            const selectedCodes = new Set(Array.from(document.querySelectorAll('[data-return-selected]:checked')).map(input => input.dataset.returnSelected));
+            returnTripParts = returnBinParts
+                .filter(part => selectedCodes.has(part.part_code) && part.quantity > 0 && part.locator_id)
+                .map(part => ({
+                    ...part,
+                    route_locator: part.suggested_locator !== '-' ? part.suggested_locator : part.locator_id,
+                }));
+
+            if (returnTripParts.length === 0) {
+                alert('Select at least one return part with a suggested locator.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${PYTHON_API_URL}/api/optimize`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                            locators: returnTripParts.map(part => part.route_locator),
+                            parts: returnTripParts.map(part => ({ locator_id: part.route_locator, part_code: part.part_code, part_name: part.part_name })),
+                    })
+                });
+                if (!response.ok) throw new Error('Unable to calculate return route');
+                const result = await response.json();
+                routeSequence = ['packingStation'];
+                result.optimized_sequence.forEach(loc => routeSequence.push(`rack-${loc.split('-')[1]}-${loc.split('-')[2]}`));
+                routeSequence.push('packingStation');
+                pathLegs = Array.isArray(result.path_legs) ? result.path_legs : [];
+                isReturnTrip = true;
+                scannedSteps.clear();
+                isNavigating = true;
+                navIndex = -1;
+                closeReturnBin();
+                document.getElementById('setupModePanel').style.display = 'none';
+                document.getElementById('navModePanel').style.display = 'flex';
+                document.getElementById('mapContainer').classList.add('nav-mode');
+                updateNavUI();
+                requestAnimationFrame(() => drawCanvasLines(-1));
+            } catch (error) {
+                alert('Unable to start the return trip. Ensure the Python backend is running.');
+            }
+        }
+
+        async function completeReturnItem(part) {
+            const confirmed = window.confirm(`Confirm return of ${part.quantity} ${part.part_code} to ${currentExpectedLocation}?`);
+            if (!confirmed) return false;
+
+            const { error: updateError } = await supabaseClient.rpc('record_return', {
+                p_part_code: part.part_code,
+                p_quantity: part.quantity,
+                p_locator_id: currentExpectedLocation,
+                p_worker_id: currentWorkerId ? String(currentWorkerId) : null,
+            });
+            if (updateError) throw updateError;
+            return true;
         }
 
         async function initApp() {
@@ -453,10 +515,19 @@
                     const scanned = decodedText.trim().toUpperCase();
 
                     if (currentScanPhase === 'location') {
-                        if (scanned === currentExpectedLocation.toUpperCase()) {
-                            currentScanPhase = 'part';
+                        const validReturnLocator = /^CTRA1-[A-Z]-\d{3}(?:-\d+)?$/.test(scanned);
+                        const locationMatches = isReturnTrip ? validReturnLocator : scanned === currentExpectedLocation.toUpperCase();
+                        if (locationMatches) {
+                            if (isReturnTrip) currentExpectedLocation = scanned;
+                            currentScanPhase = 'transition';
                             feedback.className = 'scan-feedback feedback-success';
-                            feedback.innerText = '✓ Location Verified! Now scan Part Barcode.';
+                            feedback.innerText = '✓ Location Verified! Get ready to scan the Part Barcode...';
+                            setTimeout(() => {
+                                if (html5QrCode && html5QrCode.isScanning && currentScanPhase === 'transition') {
+                                    currentScanPhase = 'part';
+                                    feedback.innerText = '✓ Location Verified! Now scan Part Barcode.';
+                                }
+                            }, scanPhaseTransitionDelayMs);
                         } else {
                             feedback.className = 'scan-feedback feedback-error';
                             feedback.innerText = `Invalid Location: ${scanned}`;
@@ -470,12 +541,26 @@
                     } 
                     else if (currentScanPhase === 'part') {
                         if (scanned === currentExpectedSku.toUpperCase()) {
-                            html5QrCode.stop().then(() => {
+                            html5QrCode.stop().then(async () => {
                                 document.getElementById('reader-container').style.display = 'none';
-                                feedback.className = 'scan-feedback feedback-success';
-                                feedback.innerText = '✓ Part Verified';
-                                document.getElementById('btnNavNext').style.display = 'block'; 
-                                scannedSteps.add(navIndex);
+                                try {
+                                    const part = returnTripParts.find(item => item.part_code === currentExpectedSku);
+                                    if (isReturnTrip && part && !(await completeReturnItem(part))) {
+                                        currentScanPhase = 'part';
+                                        feedback.className = 'scan-feedback feedback-info';
+                                        feedback.innerText = 'Quantity confirmation cancelled. Scan the SKU again.';
+                                        document.getElementById('btnScan').style.display = 'block';
+                                        return;
+                                    }
+                                    feedback.className = 'scan-feedback feedback-success';
+                                    feedback.innerText = isReturnTrip ? '✓ Return recorded' : '✓ Part Verified';
+                                    document.getElementById('btnNavNext').style.display = 'block';
+                                    scannedSteps.add(navIndex);
+                                } catch (error) {
+                                    feedback.className = 'scan-feedback feedback-error';
+                                    feedback.innerText = `Inventory update failed: ${error.message}`;
+                                    document.getElementById('btnScan').style.display = 'block';
+                                }
                             });
                         } else {
                             feedback.className = 'scan-feedback feedback-error';
@@ -524,7 +609,7 @@
                 document.getElementById('navStepBadge').innerText = `OVERVIEW`;
                 document.getElementById('navItemName').innerText = `Route Generated`;
                 document.getElementById('navItemSku').innerText = `Review target locations, then begin.`;
-                btnNext.innerText = 'Begin First Pick'; btnNext.style.display = 'block';
+                btnNext.innerText = isReturnTrip ? 'Begin First Return' : 'Begin First Pick'; btnNext.style.display = 'block';
                 btnBack.innerText = 'Cancel'; btnBack.disabled = false;
                 btnScan.style.display = 'none';
 
@@ -537,7 +622,9 @@
                 document.getElementById('navStepBadge').innerText = `FINAL RETURN`;
                 document.getElementById('navItemName').innerText = `Drop Off Parts`;
                 document.getElementById('navItemSku').innerText = `Return to Packing Station`;
-                instructions.innerHTML = `&#10148; Walk to the Central Aisle.<br>&#10148; Proceed to the Packing Station.<br>&#10148; Deliver all items to assembly.`;
+                instructions.innerHTML = isReturnTrip
+                    ? `&#10148; Return to the Packing Station.<br>&#10148; All selected returns have been recorded.`
+                    : `&#10148; Walk to the Central Aisle.<br>&#10148; Proceed to the Packing Station.<br>&#10148; Deliver all items to assembly.`;
                 instructions.style.display = 'block';
                 btnNext.innerText = 'Complete Cycle'; btnNext.style.display = 'block';
                 btnBack.innerText = 'Back Step'; btnScan.style.display = 'none';
@@ -545,20 +632,24 @@
                 const rackId = routeSequence[navIndex + 1];
                 document.getElementById(rackId).classList.add('nav-target');
                 const locMatch = rackId.replace('rack-', '');
-                const part = currentPickList.find(p => p.locator_id.includes(locMatch));
+                const part = isReturnTrip
+                    ? returnTripParts.find(item => item.route_locator.includes(locMatch))
+                    : currentPickList.find(p => p.locator_id.includes(locMatch));
                 
                 currentExpectedSku = part.part_code;
-                currentExpectedLocation = part.locator_id; 
+                currentExpectedLocation = isReturnTrip ? part.route_locator : part.locator_id;
                 currentScanPhase = 'location';
 
                 document.getElementById('navStepBadge').innerText = `STEP ${navIndex + 1} OF ${routeSequence.length - 2}`;
-                document.getElementById('navItemName').innerText = `Retrieve: ${part.part_name}`;
+                document.getElementById('navItemName').innerText = isReturnTrip ? `Return: ${part.part_name}` : `Retrieve: ${part.part_name}`;
                 document.getElementById('navItemSku').innerText = `SKU ID: ${part.part_code}`;
                 
                 const rowLtr = locMatch.split('-')[0];
                 const colNum = locMatch.split('-')[1];
                 const shelf = part.locator_id.endsWith('-2') ? 'Top Shelf' : 'Bottom Shelf';
-                instructions.innerHTML = `&#10148; Enter Aisle <b>${rowLtr}</b>.<br>&#10148; Locate Rack <b>${colNum}</b>.<br>&#10148; Pick <b><span style="color:#ef4444;">${part.qty} item(s)</span></b> from <b>${shelf}</b>.`;
+                instructions.innerHTML = isReturnTrip
+                    ? `&#10148; Scan the locator where you are placing the part.<br>&#10148; Suggested locator: <b>${part.suggested_locator}</b>.<br>&#10148; Scan SKU <b>${part.part_code}</b>.<br>&#10148; Confirm return quantity: <b><span style="color:#ef4444;">${part.quantity} item(s)</span></b>.`
+                    : `&#10148; Enter Aisle <b>${rowLtr}</b>.<br>&#10148; Locate Rack <b>${colNum}</b>.<br>&#10148; Pick <b><span style="color:#ef4444;">${part.qty} item(s)</span></b> from <b>${shelf}</b>.`;
                 instructions.style.display = 'block';
 
                 btnBack.innerText = 'Back Step';
@@ -582,9 +673,19 @@
             navIndex += direction;
 
             if (navIndex >= routeSequence.length - 1) {
-                await supabaseClient.from('tasks').update({status: 'Completed'}).eq('id', currentTaskId);
-                await supabaseClient.from('workers').update({status: 'Idle'}).eq('id', currentWorkerId);
-                alert('Task Complete! Great job.');
+                if (isReturnTrip) {
+                    alert('Return trip complete. Inventory has been updated.');
+                } else {
+                    const { error: completionError } = await supabaseClient.rpc('complete_task_and_deduct_inventory', {
+                        p_task_id: currentTaskId,
+                    });
+                    if (completionError) {
+                        alert(`Unable to complete task: ${completionError.message}`);
+                        navIndex -= direction;
+                        return;
+                    }
+                    alert('Task Complete! Great job.');
+                }
                 window.location.reload(); 
             } else {
                 updateNavUI(); drawCanvasLines(navIndex);
