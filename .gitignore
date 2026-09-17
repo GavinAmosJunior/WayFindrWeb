@@ -1,0 +1,6 @@
+*/__pycache__/
+*.py[cod]
+backend/route_analytics.db
+__pycache__/
+barcodes/
+wayenv/
