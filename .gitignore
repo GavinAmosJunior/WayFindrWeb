@@ -1,3 +1,4 @@
 wayenv/
-backend/__pycache__/
-__pycache__/
+*/__pycache__/
+__pycache__
+barcodes/
