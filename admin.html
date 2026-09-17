@@ -66,11 +66,20 @@
         .locator-row-labels { position: relative; min-height: 280px; font-size: 10px; font-weight: bold; color: var(--text-muted); }
         .locator-row-label { position: absolute; right: 0; transform: translateY(-50%); }
         .heatmap { position: relative; aspect-ratio: 66 / 49; min-height: 280px; border: 1px solid #cbd5e1; background: #f8fafc; overflow: hidden; }
-        .heat-cell { position: absolute; width: 1.7%; height: 1.7%; transform: translate(-50%, -50%); border-radius: 50%; }
+        .heatmap-locator { position: absolute; z-index: 0; width: 1.15%; height: 2%; transform: translate(-50%, -50%); border-radius: 2px; background: #d1d5db; }
+        .heatmap-locator.hidden { visibility: hidden; }
+        .heat-cell { position: absolute; z-index: 1; width: 1.7%; height: 1.7%; transform: translate(-50%, -50%); border-radius: 50%; }
+        .heat-marker { position: absolute; z-index: 2; width: 14px; height: 14px; transform: translate(-50%, -50%); border: 3px solid white; border-radius: 50%; box-shadow: 0 1px 5px rgba(15, 23, 42, 0.45); }
+        .heat-marker-before { background: #cc0000; }
+        .heat-marker-after { background: #2563eb; }
+        .heat-marker-label { position: absolute; left: 10px; top: -9px; width: max-content; max-width: 180px; padding: 3px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.92); color: white; font-size: 10px; font-weight: 700; white-space: normal; pointer-events: none; }
         .heatmap-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
         .analytics-list { max-height: 280px; overflow-y: auto; }
         .analytics-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .analytics-clickable { cursor: pointer; }
+        .analytics-clickable:hover, .analytics-clickable:focus-visible { background: #f8fafc; outline: none; }
         .recommendation { padding: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px; margin-bottom: 8px; font-size: 12px; }
+        .recommendation.analytics-clickable:hover, .recommendation.analytics-clickable:focus-visible { background: #fef3c7; }
         @media (max-width: 900px) { .dashboard-grid, .analytics-columns { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -148,6 +157,7 @@
         let toys = []; let pendingTasks = []; let workers = [];
         const toyQuantities = new Map();
         let allWarehouseParts = [];
+        let analyticsSelection = [];
 
         async function initDashboard() {
             fetchAnalytics();
@@ -172,6 +182,87 @@
             }
         }
 
+        function locatorToHeatmapPoint(locatorId) {
+            const parts = locatorId.split('-');
+            if (parts.length < 3) return null;
+            const rowIndex = 'ABCDEFGHIJKLMNOPQRSTUVWX'.indexOf(parts[1]);
+            const column = Number(parts[2]);
+            if (rowIndex < 0 || !Number.isInteger(column) || column < 1 || column > 64) return null;
+            return {
+                left: (column <= 32 ? column : column + 1) / 66 * 100,
+                top: (48 - (rowIndex * 2 + 1)) / 49 * 100,
+            };
+        }
+
+        function renderHeatmapLocators(heatmap) {
+            const rows = 'XWVUTSRQPONMLKJIHGFEDCBA';
+            const indentedRows = new Set(['B', 'D', 'F', 'H', 'J', 'L', 'N', 'P', 'R', 'T', 'V', 'X']);
+            rows.split('').forEach(rowLetter => {
+                for (let column = 1; column <= 64; column++) {
+                    const locator = document.createElement('span');
+                    locator.className = 'heatmap-locator';
+                    if (indentedRows.has(rowLetter) && (column === 1 || column === 64)) {
+                        locator.classList.add('hidden');
+                    }
+                    const point = locatorToHeatmapPoint(`CTRA1-${rowLetter}-${column}`);
+                    locator.style.left = `${point.left}%`;
+                    locator.style.top = `${point.top}%`;
+                    locator.title = `CTRA1-${rowLetter}-${String(column).padStart(3, '0')}`;
+                    heatmap.appendChild(locator);
+                }
+            });
+        }
+
+        function selectAnalyticsLocators(locators) {
+            analyticsSelection = locators;
+            renderAnalyticsSelection();
+        }
+
+        function renderAnalyticsSelection() {
+            const heatmap = document.getElementById('heatmap');
+            heatmap.querySelectorAll('.heat-marker').forEach(marker => marker.remove());
+            analyticsSelection.forEach(selection => {
+                const point = locatorToHeatmapPoint(selection.locatorId);
+                if (!point) return;
+                const marker = document.createElement('span');
+                marker.className = `heat-marker ${selection.markerClass || 'heat-marker-before'}`;
+                marker.style.left = `${point.left}%`;
+                marker.style.top = `${point.top}%`;
+                marker.title = selection.label;
+                const label = document.createElement('span');
+                label.className = 'heat-marker-label';
+                label.innerText = selection.label;
+                marker.appendChild(label);
+                heatmap.appendChild(marker);
+            });
+        }
+
+        function bindAnalyticsSelection() {
+            document.querySelectorAll('.analytics-clickable').forEach(element => {
+                const select = () => {
+                    if (element.dataset.locator) {
+                        selectAnalyticsLocators([{
+                            locatorId: element.dataset.locator,
+                            label: element.dataset.locator,
+                            markerClass: 'heat-marker-before',
+                        }]);
+                    } else {
+                        selectAnalyticsLocators([
+                            { locatorId: element.dataset.fromLocator, label: `Before: ${element.dataset.fromLocator}`, markerClass: 'heat-marker-before' },
+                            { locatorId: element.dataset.suggestedLocator, label: `After: ${element.dataset.suggestedLocator}`, markerClass: 'heat-marker-after' },
+                        ]);
+                    }
+                };
+                element.addEventListener('click', select);
+                element.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        select();
+                    }
+                });
+            });
+        }
+
         function renderAnalytics(data) {
             const summary = data.summary;
             document.getElementById('analyticsSummary').innerHTML = `
@@ -185,20 +276,31 @@
             }).join('');
 
             const heatmap = document.getElementById('heatmap');
+            analyticsSelection = [];
+            heatmap.innerHTML = '';
+            renderHeatmapLocators(heatmap);
             const maxVisits = Math.max(...data.heatmap.map(cell => cell.visits), 1);
-            heatmap.innerHTML = data.heatmap.map(cell => {
+            data.heatmap.forEach(cell => {
                 const intensity = cell.visits / maxVisits;
                 const color = `rgba(204, 0, 0, ${0.12 + intensity * 0.78})`;
                 const top = (48 - cell.y) / 49 * 100;
-                return `<span class="heat-cell" title="${cell.visits} visits" style="left:${cell.x / 66 * 100}%;top:${top}%;background:${color};box-shadow:0 0 ${4 + intensity * 8}px ${color};"></span>`;
-            }).join('');
+                const cellElement = document.createElement('span');
+                cellElement.className = 'heat-cell';
+                cellElement.title = `${cell.visits} visits`;
+                cellElement.style.left = `${cell.x / 66 * 100}%`;
+                cellElement.style.top = `${top}%`;
+                cellElement.style.background = color;
+                cellElement.style.boxShadow = `0 0 ${4 + intensity * 8}px ${color}`;
+                heatmap.appendChild(cellElement);
+            });
 
             document.getElementById('hotspotList').innerHTML = data.hotspot_locators.length
-                ? data.hotspot_locators.map(item => `<div class="analytics-row"><span>${item.locator_id}</span><strong>${item.visits} visits</strong></div>`).join('')
+                ? data.hotspot_locators.map(item => `<div class="analytics-row analytics-clickable" role="button" tabindex="0" data-locator="${item.locator_id}"><span>${item.locator_id}</span><strong>${item.visits} visits</strong></div>`).join('')
                 : '<p style="color:var(--text-muted);font-size:13px;">No route history in this window.</p>';
             document.getElementById('recommendationList').innerHTML = data.recommendations.length
-                ? data.recommendations.map(item => `<div class="recommendation"><strong>${item.from_locator}</strong> &rarr; <strong>${item.suggested_locator}</strong><br>${item.visits} visits. ${item.reason}</div>`).join('')
+                ? data.recommendations.map(item => `<div class="recommendation analytics-clickable" role="button" tabindex="0" data-from-locator="${item.from_locator}" data-suggested-locator="${item.suggested_locator}"><strong>${item.from_locator}</strong> &rarr; <strong>${item.suggested_locator}</strong><br>${item.visits} visits. ${item.reason}</div>`).join('')
                 : '<p style="color:var(--text-muted);font-size:13px;">No relocation candidates yet.</p>';
+            bindAnalyticsSelection();
         }
 
         async function fetchToys() {

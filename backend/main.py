@@ -230,7 +230,7 @@ def make_recommendations(locator_counts):
         for column in range(1, 65):
             if row_letter in engine.indented_rows and column in (1, 64):
                 continue
-            locator = f"LOC-{row_letter}-{column:03d}"
+            locator = f"CTRA1-{row_letter}-{column:03d}"
             if locator in visited_locators:
                 continue
             x, rack_y = locator_coordinate(locator)
@@ -239,14 +239,33 @@ def make_recommendations(locator_counts):
 
     candidates.sort()
     recommendations = []
+    reserved_locators = set()
     for row in locator_counts[:10]:
         current_x, current_y = locator_coordinate(row["locator_id"])
         current_distance = abs(current_x - engine.entrance_coord[0]) + max(current_y - 1, 0)
+        source_prefix = row["locator_id"].split("-")[0]
         closer = next(
-            (candidate for distance, candidate in candidates if distance < current_distance * 0.75),
+            (
+                candidate
+                for _, _, candidate in sorted(
+                    (
+                        (
+                            abs(locator_coordinate(candidate)[0] - current_x)
+                            + abs(locator_coordinate(candidate)[1] - current_y),
+                            distance,
+                            candidate,
+                        )
+                        for distance, candidate in candidates
+                        if candidate not in reserved_locators
+                        and candidate.startswith(f"{source_prefix}-")
+                        and distance < current_distance * 0.75
+                    )
+                )
+            ),
             None,
         )
         if closer:
+            reserved_locators.add(closer)
             recommendations.append(
                 {
                     "from_locator": row["locator_id"],
@@ -268,8 +287,8 @@ class OptimizationRequest(BaseModel):
 def optimize_route(req: OptimizationRequest):
     if not req.locators: raise HTTPException(status_code=400, detail="List cannot be empty")
     base_locators = {"-".join(loc.split('-')[:3]) for loc in req.locators}
-    record_route(sequence, legs)
     sequence, legs, total_grid_steps = engine.optimize_sequence(base_locators)
+    record_route(sequence, legs)
     grid_step_meters = 0.725
     walking_speed_mps = 1.4 
     pick_time_seconds = 90 
