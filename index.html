@@ -18,8 +18,6 @@
         .task-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: none; }
         .task-card h4 { margin: 0 0 5px 0; color: var(--primary-blue); font-size: 14px; }
         .task-card p { margin: 0; font-size: 16px; font-weight: bold; color: var(--dark-slate); }
-        .est-badge { display: inline-block; background: #d1fae5; color: #059669; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-top: 8px;}
-
         .pick-list { flex: 1; overflow-y: auto; margin-bottom: 20px; }
         .pick-item { padding: 12px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; cursor: pointer; transition: 0.2s;}
         .pick-item:hover { border-color: #a855f7; background: #faf5ff; }
@@ -33,6 +31,11 @@
         
         .nav-item-name { color: #1E293B; font-size: 20px; margin: 0 0 4px 0; font-weight: bold; line-height: 1.2; }
         .nav-item-sku { color: var(--primary-blue); font-size: 14px; margin: 0 0 15px 0; font-weight: 600; }
+        /* Displays the calculated route distance and walking time. */
+        .route-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 16px; }
+        .route-metric { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
+        .route-metric-label { display: block; color: #64748b; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .route-metric-value { display: block; color: var(--dark-slate); font-size: 17px; font-weight: bold; margin-top: 4px; }
         
         .text-instructions { background: #eff6ff; border-left: 4px solid var(--primary-blue); padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; color: #1e3a8a; line-height: 1.5; font-weight: 500;}
 
@@ -80,7 +83,6 @@
             <div id="taskCard" class="task-card">
                 <h4>ACTIVE ASSIGNMENT</h4>
                 <p id="taskToyName">--</p>
-                <div class="est-badge" id="estTimeBadge">--</div>
             </div>
 
             <h3 style="margin-top: 10px;">2. Pick List Preview</h3>
@@ -98,6 +100,17 @@
             </div>
             <h2 id="navItemName" class="nav-item-name">Warehouse Scan</h2>
             <p id="navItemSku" class="nav-item-sku">Ready to begin</p>
+            <!-- Route estimates are filled after the backend calculates the route. -->
+            <div class="route-metrics">
+                <div class="route-metric">
+                    <span class="route-metric-label">Est. Distance</span>
+                    <span id="routeDistance" class="route-metric-value">-- m</span>
+                </div>
+                <div class="route-metric">
+                    <span class="route-metric-label">Est. Time</span>
+                    <span id="routeTime" class="route-metric-value">--</span>
+                </div>
+            </div>
             
             <div id="textInstructions" class="text-instructions" style="display:none;"></div>
 
@@ -123,6 +136,7 @@
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const PYTHON_API_URL = 'https://wayfindrengine.onrender.com';
+        const GRID_STEP_METERS = 1;
 
         let currentPickList = [];
         let routeSequence = []; 
@@ -242,18 +256,51 @@
                 result.optimized_sequence.forEach(loc => routeSequence.push(`rack-${loc.split('-')[1]}-${loc.split('-')[2]}`));
                 routeSequence.push('packingStation');
                 
+                // Keep only valid path data before calculating the route summary.
+                pathLegs = Array.isArray(result.path_legs) ? result.path_legs : [];
+                const apiDistance = Number(result.distance_meters ?? result.total_distance);
+                // Calculate distance from path coordinates when the API has no distance field.
+                const calculatedSteps = pathLegs.reduce((routeTotal, leg) => {
+                    if (!Array.isArray(leg)) return routeTotal;
+                    return routeTotal + leg.reduce((legTotal, point, index) => {
+                        if (index === 0) return legTotal;
+                        const previousPoint = leg[index - 1];
+                        const x = Number(point.x);
+                        const y = Number(point.y);
+                        const previousX = Number(previousPoint.x);
+                        const previousY = Number(previousPoint.y);
+                        if (![x, y, previousX, previousY].every(Number.isFinite)) return legTotal;
+                        return legTotal + Math.abs(x - previousX) + Math.abs(y - previousY);
+                    }, 0);
+                }, 0);
+                const totalSteps = Number.isFinite(apiDistance) ? apiDistance : calculatedSteps;
+                const distanceMeters = totalSteps * GRID_STEP_METERS;
+                const apiTime = Number(result.estimated_time_seconds);
+                const estimatedTimeSeconds = Number.isFinite(apiTime) ? apiTime : Math.ceil(distanceMeters / 1);
+                document.getElementById('routeDistance').innerText = `${Math.round(distanceMeters)} m`;
+                document.getElementById('routeTime').innerText = formatDuration(estimatedTimeSeconds);
                 pathLegs = result.path_legs;
-                scannedSteps.clear();
+                scannedSteps.clear(); // Reset scan states
                 
                 isNavigating = true; navIndex = -1; 
                 document.getElementById('setupModePanel').style.display = 'none';
                 document.getElementById('navModePanel').style.display = 'flex';
                 document.getElementById('mapContainer').classList.add('nav-mode');
                 
-                updateNavUI(); drawCanvasLines(-1);
+                // Show the overview panel, then draw the complete route after layout updates.
+                updateNavUI();
+                requestAnimationFrame(() => drawCanvasLines(-1));
 
             } catch (err) { alert('API Error. Ensure Python backend is running.'); } 
             finally { btn.disabled = false; btn.innerText = 'Start Navigation'; }
+        }
+        // Utility function to format duration in seconds to a human-readable string
+        function formatDuration(totalSeconds) {
+            totalSeconds = Number(totalSeconds);
+            if (!Number.isFinite(totalSeconds)) return '--';
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return minutes > 0 ? `~${minutes}m ${seconds}s` : `~${seconds}s`;
         }
 
         function startScanner() {
@@ -443,12 +490,20 @@
 
             const drawLeg = (leg) => {
                 if (!leg || leg.length === 0) return;
-                ctx.beginPath(); ctx.moveTo(getLogicalX(leg[0].x), getLogicalY(leg[0].y));
+                ctx.beginPath();
+                ctx.moveTo(getLogicalX(leg[0].x), getLogicalY(leg[0].y));
                 for(let i = 1; i < leg.length; i++) ctx.lineTo(getLogicalX(leg[i].x), getLogicalY(leg[i].y));
-                ctx.strokeStyle = '#2563EB'; ctx.lineWidth = 4; ctx.shadowColor = 'rgba(37, 99, 235, 0.8)'; ctx.shadowBlur = 10;
+                ctx.strokeStyle = activeStep === -1 ? 'rgba(37, 99, 235, 0.72)' : '#2563EB';
+                ctx.lineWidth = activeStep === -1 ? 3 : 4;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.shadowColor = activeStep === -1 ? 'transparent' : 'rgba(37, 99, 235, 0.35)';
+                ctx.shadowBlur = activeStep === -1 ? 0 : 5;
                 ctx.stroke();
             };
-            drawLeg(pathLegs[activeStep]);
+            // Overview shows every leg; navigation mode shows only the current leg.
+            if (activeStep === -1) pathLegs.forEach(drawLeg);
+            else drawLeg(pathLegs[activeStep]);
         }
 
         window.onload = initApp;

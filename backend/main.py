@@ -91,7 +91,7 @@ class WarehouseEngine:
 
     def optimize_sequence(self, locators: List[str]):
         if not locators: 
-            return [], []
+            return [], [], 0 #tak ganti
 
         best_overall_cost = float('inf')
         best_overall_sequence = []
@@ -143,7 +143,7 @@ class WarehouseEngine:
                     best_overall_sequence = perm
                     best_overall_legs = total_legs
 
-        return list(best_overall_sequence), best_overall_legs
+        return list(best_overall_sequence), best_overall_legs, best_overall_cost
 
 engine = WarehouseEngine()
 
@@ -155,14 +155,21 @@ def optimize_route(req: OptimizationRequest):
     if not req.locators: raise HTTPException(status_code=400, detail="List cannot be empty")
     base_locators = {"-".join(loc.split('-')[:3]) for loc in req.locators}
     
-    sequence, legs = engine.optimize_sequence(base_locators)
+    sequence, legs, total_grid_steps = engine.optimize_sequence(base_locators)
+    grid_step_meters = 0.725 #tak ganti
+    walking_speed_mps = 1.4 # tak ganti
+    pick_time_seconds = 90 # tak ganti
+    distance_meters = total_grid_steps * grid_step_meters # tak ganti
+    estimated_time_seconds = (distance_meters / walking_speed_mps) + (len(sequence) * pick_time_seconds) #tak tambahu
     
     formatted_legs = [[{"x": pt[0], "y": pt[1]} for pt in leg] for leg in legs]
     
     return {
         "status": "success",
         "optimized_sequence": sequence,
-        "path_legs": formatted_legs
+        "path_legs": formatted_legs,
+        "distance_meters": distance_meters, # tak ganti
+        "estimated_time_seconds": round(estimated_time_seconds) # tak tambahu
     }
 
 @app.get("/")
