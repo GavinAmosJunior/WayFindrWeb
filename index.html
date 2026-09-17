@@ -75,7 +75,7 @@
 
     <div class="sidebar">
         <div id="setupModePanel">
-            <h3>1. Active Shoppers</h3>
+            <h3>1. Shoppers</h3>
             <select id="workerSelect" onchange="fetchWorkerTask()">
                 <option value="" disabled selected>Loading active shoppers...</option>
             </select>
@@ -156,11 +156,11 @@
 
         async function initApp() {
             renderGrid();
-            const { data } = await supabaseClient.from('workers').select('*').eq('status', 'Active').order('id', { ascending: true });
+            const { data } = await supabaseClient.from('workers').select('*').order('id', { ascending: true });
             const select = document.getElementById('workerSelect');
             select.innerHTML = '<option value="" disabled selected>Select your profile...</option>';
-            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name} - ${w.category ? `${w.category[0].toUpperCase() + w.category.slice(1)} Zone` : 'Unassigned'}</option>`);
-            else select.innerHTML = '<option value="" disabled selected>No active shoppers found.</option>';
+            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name} - ${w.status} - ${w.category ? `${w.category[0].toUpperCase() + w.category.slice(1)} Zone` : 'Unassigned'}</option>`);
+            else select.innerHTML = '<option value="" disabled selected>No shoppers found.</option>';
         }
 
         function renderGrid() {
