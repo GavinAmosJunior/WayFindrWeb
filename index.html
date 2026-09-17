@@ -23,6 +23,7 @@
         .pick-list { flex: 1; overflow-y: auto; margin-bottom: 20px; }
         .pick-item { padding: 12px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; cursor: pointer; transition: 0.2s;}
         .pick-item:hover { border-color: #a855f7; background: #faf5ff; }
+        .slot-recommendation { margin-top: 8px; padding: 7px 9px; border-left: 3px solid #10B981; background: #ecfdf5; color: #065f46; font-size: 11px; line-height: 1.35; }
 
         .start-nav-btn { background: var(--dark-slate); color: white; border: none; width: 100%; padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; display: none; }
 
@@ -44,6 +45,11 @@
         .scan-feedback { font-weight: bold; font-size: 13px; text-align: center; margin-bottom: 15px; display: none; padding: 8px; border-radius: 6px; }
         .feedback-success { color: #065f46; background: #d1fae5; }
         .feedback-error { color: #991b1b; background: #fee2e2; animation: shake 0.4s; }
+        .placement-confirm { display: none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+        .placement-confirm label { display: block; color: #475569; font-size: 12px; font-weight: bold; margin-bottom: 6px; }
+        .placement-confirm input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
+        .placement-confirm button { background: #059669; color: white; border: none; width: 100%; padding: 10px; border-radius: 7px; cursor: pointer; font-weight: bold; }
+        .placement-status { color: #64748B; font-size: 11px; margin-top: 7px; min-height: 15px; }
 
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
 
@@ -109,6 +115,12 @@
             <div id="reader-container"><div id="reader"></div></div>
             <button id="btnScan" class="scan-btn" onclick="startScanner()" style="display:none;">Scan Part Barcode</button>
             <div id="scanFeedback" class="scan-feedback"></div>
+            <div id="placementConfirm" class="placement-confirm">
+                <label>Confirm leftover part locations after returning to packing</label>
+                <div id="placementFields"></div>
+                <button onclick="confirmAllPlacements()">Save Return Locations</button>
+                <div id="placementStatus" class="placement-status"></div>
+            </div>
 
             <div class="nav-controls">
                 <button id="btnNavNext" class="nav-btn btn-next" onclick="navStep(1)" style="display:block;">Begin First Pick</button>
@@ -130,6 +142,8 @@
         const PYTHON_API_URL = 'https://wayfindrengine.onrender.com';
 
         let currentPickList = [];
+        let currentPlacementPart = null;
+        let warehouseParts = [];
         let routeSequence = []; 
         let pathLegs = [];
         let currentTaskId = null;
@@ -186,8 +200,14 @@
             document.getElementById('taskToyName').innerText = task.preset_toys.toy_name;
             taskCard.style.display = 'block';
 
-            const { data: bomData } = await supabaseClient.from('toy_bom').select('part_code, warehouse_parts(part_name, locator_id)').eq('toy_id', task.toy_id);
-            currentPickList = bomData.map(b => ({ part_code: b.part_code, part_name: b.warehouse_parts.part_name, locator_id: b.warehouse_parts.locator_id }));
+            const { data: bomData } = await supabaseClient.from('toy_bom').select('part_code, warehouse_parts(id, part_name, locator_id)').eq('toy_id', task.toy_id);
+            const { data: occupiedParts } = await supabaseClient.from('warehouse_parts').select('locator_id');
+            warehouseParts = occupiedParts || [];
+            currentPickList = bomData.map(b => {
+                const part = { id: b.warehouse_parts.id, part_code: b.part_code, part_name: b.warehouse_parts.part_name, locator_id: b.warehouse_parts.locator_id };
+                part.suggested_locator = findNearestEmptySlot(part.locator_id);
+                return part;
+            });
 
             // Estimated Time Calculation Logic Explained in text
             const estMins = Math.ceil(currentPickList.length * 1.5);
@@ -195,7 +215,10 @@
 
             list.innerHTML = '';
             currentPickList.forEach(part => {
-                list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.part_code}</strong><br><span style="font-size:12px;color:#666;">${part.part_name}</span></div></div>`;
+                const recommendation = part.suggested_locator
+                    ? `<div class="slot-recommendation">Suggested return slot: <strong>${part.suggested_locator}</strong><br>Empty and closer to the packing station.</div>`
+                    : '';
+                list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.part_code}</strong><br><span style="font-size:12px;color:#666;">${part.part_name}</span></div>${recommendation}</div>`;
             });
             btn.style.display = 'block';
         }
@@ -209,6 +232,39 @@
             if(target) target.classList.add('preview-target');
         }
 
+        function canonicalLocator(locator) {
+            const match = /^(?:CTRA1|LOC)-([A-X])-(\d{3})/.exec(locator || '');
+            return match ? `CTRA1-${match[1]}-${match[2]}` : locator;
+        }
+
+        function locatorDistance(locator) {
+            const match = /(?:^|-)([A-X])-(\d{3})(?:-|$)/.exec(locator || '');
+            if (!match) return null;
+            const row = match[1].charCodeAt(0) - 65;
+            const column = Number(match[2]);
+            const x = column <= 32 ? column : column + 1;
+            return Math.abs(x - 33) + row * 2;
+        }
+
+        function findNearestEmptySlot(currentLocator) {
+            const current = canonicalLocator(currentLocator);
+            const currentDistance = locatorDistance(current);
+            if (currentDistance === null) return null;
+            const occupied = new Set(warehouseParts.map(part => canonicalLocator(part.locator_id)));
+            const candidates = [];
+            for (const row of 'ABCDEFGHIJKLMNOPQRSTUVWX') {
+                for (let column = 1; column <= 64; column++) {
+                    if ('BDFHJLNPRTVX'.includes(row) && (column === 1 || column === 64)) continue;
+                    const candidate = `CTRA1-${row}-${String(column).padStart(3, '0')}`;
+                    if (candidate === current || occupied.has(candidate)) continue;
+                    const distance = locatorDistance(candidate);
+                    if (distance < currentDistance) candidates.push({ candidate, distance });
+                }
+            }
+            candidates.sort((left, right) => left.distance - right.distance);
+            return candidates.length ? candidates[0].candidate : null;
+        }
+
         async function startNavigation() {
             const btn = document.getElementById('startNavBtn');
             btn.disabled = true; btn.innerText = 'Calculating A* Route...';
@@ -216,7 +272,10 @@
             try {
                 const response = await fetch(`${PYTHON_API_URL}/api/optimize`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ locators: currentPickList.map(i => i.locator_id) })
+                    body: JSON.stringify({
+                        locators: currentPickList.map(i => i.locator_id),
+                        items: currentPickList.map(i => ({ part_code: i.part_code, locator_id: i.locator_id }))
+                    })
                 });
                 const result = await response.json();
                 
@@ -256,7 +315,6 @@
                             feedback.className = 'scan-feedback feedback-success';
                             feedback.innerText = '✓ Part Verified';
                             feedback.style.display = 'block';
-                            
                             document.getElementById('btnNavNext').style.display = 'block'; 
                             scannedSteps.add(navIndex); // Save state!
                         });
@@ -293,11 +351,14 @@
             const feedback = document.getElementById('scanFeedback');
             const readerContainer = document.getElementById('reader-container');
             const instructions = document.getElementById('textInstructions');
+            const placementConfirm = document.getElementById('placementConfirm');
 
             if(html5QrCode && html5QrCode.isScanning) html5QrCode.stop();
             readerContainer.style.display = 'none';
             feedback.style.display = 'none';
             instructions.style.display = 'none';
+            placementConfirm.style.display = 'none';
+            document.getElementById('placementStatus').innerText = '';
 
             if (navIndex === -1) {
                 // Overview Mode UX (Numbers instead of lines)
@@ -326,6 +387,7 @@
                 document.getElementById(rackId).classList.add('nav-target');
                 const locMatch = rackId.replace('rack-', '');
                 const part = currentPickList.find(p => p.locator_id.includes(locMatch));
+                currentPlacementPart = part;
                 
                 currentExpectedSku = part.part_code;
 
@@ -356,15 +418,58 @@
             }
         }
 
+        function showReturnPlacementConfirmation() {
+            const panel = document.getElementById('placementConfirm');
+            const fields = document.getElementById('placementFields');
+            panel.style.display = 'block';
+            fields.innerHTML = currentPickList.map((part, index) => `
+                <div style="margin-bottom:8px;">
+                    <div style="font-size:11px;color:#475569;margin-bottom:3px;"><strong>${part.part_code}</strong> ${part.part_name}</div>
+                    <input id="placement-${index}" value="${part.suggested_locator || part.locator_id}" placeholder="e.g. CTRA1-X-015">
+                </div>
+            `).join('');
+        }
+
+        function beginCycleCompletion() {
+            showReturnPlacementConfirmation();
+            document.getElementById('btnNavNext').style.display = 'none';
+            document.getElementById('placementStatus').innerText = 'Confirm the final return locations before closing this task.';
+        }
+
+        async function confirmAllPlacements() {
+            const status = document.getElementById('placementStatus');
+            status.innerText = 'Saving...';
+            for (let index = 0; index < currentPickList.length; index++) {
+                const part = currentPickList[index];
+                const locator = document.getElementById(`placement-${index}`).value.trim().toUpperCase();
+                if (!part.id || !/^CTRA1-[A-X]-\d{3}(?:-\d+)?$/.test(locator)) {
+                    status.innerText = `Use a valid locator for ${part.part_code}, such as CTRA1-X-015.`;
+                    return;
+                }
+                const { error } = await supabaseClient.from('warehouse_parts').update({ locator_id: locator }).eq('id', part.id);
+                if (error) {
+                    status.innerText = `Could not save ${part.part_code}: ${error.message}`;
+                    return;
+                }
+                part.locator_id = locator;
+            }
+            status.innerText = 'Return locations saved.';
+            await completeCycle();
+        }
+
+        async function completeCycle() {
+            await supabaseClient.from('tasks').update({status: 'Completed'}).eq('id', currentTaskId);
+            await supabaseClient.from('workers').update({status: 'Idle'}).eq('id', currentWorkerId);
+            alert('Task Complete! Great job.');
+            window.location.reload();
+        }
+
         async function navStep(direction) {
             if (navIndex === -1 && direction === -1) { window.location.reload(); return; }
             navIndex += direction;
 
             if (navIndex >= routeSequence.length - 1) {
-                await supabaseClient.from('tasks').update({status: 'Completed'}).eq('id', currentTaskId);
-                await supabaseClient.from('workers').update({status: 'Idle'}).eq('id', currentWorkerId);
-                alert('Task Complete! Great job.');
-                window.location.reload(); 
+                beginCycleCompletion();
             } else {
                 updateNavUI(); drawCanvasLines(navIndex);
             }

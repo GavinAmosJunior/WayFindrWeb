@@ -191,11 +191,22 @@ def initialize_analytics_store():
                 ON route_cells(run_id);
             CREATE INDEX IF NOT EXISTS idx_route_locators_run
                 ON route_locators(run_id);
+            CREATE TABLE IF NOT EXISTS route_parts (
+                run_id INTEGER NOT NULL,
+                part_code TEXT NOT NULL,
+                locator_id TEXT NOT NULL,
+                stop_order INTEGER NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES route_runs(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_route_parts_run
+                ON route_parts(run_id);
+            CREATE INDEX IF NOT EXISTS idx_route_parts_code
+                ON route_parts(part_code);
             """
         )
 
 
-def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]]):
+def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]], items=None):
     recorded_at = datetime.now(timezone.utc).isoformat()
     cells = [point for leg in legs for point in leg]
     with get_analytics_connection() as connection:
@@ -212,6 +223,15 @@ def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]]):
             "INSERT INTO route_locators (run_id, locator_id, stop_order) VALUES (?, ?, ?)",
             [(run_id, locator, order) for order, locator in enumerate(sequence)],
         )
+        if items:
+            connection.executemany(
+                "INSERT INTO route_parts (run_id, part_code, locator_id, stop_order) VALUES (?, ?, ?, ?)",
+                [
+                    (run_id, item["part_code"], item["locator_id"], order)
+                    for order, item in enumerate(items)
+                    if item.get("part_code") and item.get("locator_id")
+                ],
+            )
 
 
 def locator_coordinate(locator_id: str) -> Tuple[int, int]:
@@ -222,54 +242,81 @@ def locator_coordinate(locator_id: str) -> Tuple[int, int]:
     return x, row_index * 2 + 1
 
 
-def make_recommendations(locator_counts):
-    visited_locators = {row["locator_id"] for row in locator_counts}
+def canonical_locator(locator_id: str) -> str:
+    parts = locator_id.split('-')
+    return f"CTRA1-{parts[1]}-{parts[2]}"
+
+
+def empty_locator_candidates(occupied_locators):
+    occupied = {canonical_locator(locator) for locator in occupied_locators}
     candidates = []
     for row_letter in engine.rows:
         for column in range(1, 65):
             if row_letter in engine.indented_rows and column in (1, 64):
                 continue
-            locator = f"LOC-{row_letter}-{column:03d}"
-            if locator in visited_locators:
+            locator = f"CTRA1-{row_letter}-{column:03d}"
+            if locator in occupied:
                 continue
             x, rack_y = locator_coordinate(locator)
-            access_y = rack_y - 1 if rack_y > 0 else rack_y + 1
-            candidates.append((abs(x - engine.entrance_coord[0]) + access_y, locator))
+            distance = abs(x - engine.entrance_coord[0]) + max(rack_y - 1, 0)
+            candidates.append((distance, locator))
+    return sorted(candidates)
 
-    candidates.sort()
+
+def make_recommendations(locator_counts):
+    candidates = empty_locator_candidates([row["locator_id"] for row in locator_counts])
     recommendations = []
     for row in locator_counts[:10]:
-        current_x, current_y = locator_coordinate(row["locator_id"])
-        current_distance = abs(current_x - engine.entrance_coord[0]) + max(current_y - 1, 0)
-        closer = next(
-            (candidate for distance, candidate in candidates if distance < current_distance * 0.75),
-            None,
-        )
+        current_distance = abs(locator_coordinate(row["locator_id"])[0] - engine.entrance_coord[0]) + max(locator_coordinate(row["locator_id"])[1] - 1, 0)
+        closer = next((candidate for distance, candidate in candidates if distance < current_distance * 0.8), None)
         if closer:
             recommendations.append(
                 {
-                    "from_locator": row["locator_id"],
+                    "from_locator": canonical_locator(row["locator_id"]),
                     "suggested_locator": closer,
                     "visits": row["visits"],
-                    "reason": "Frequently visited and the candidate is closer to the packing station.",
+                    "reason": "This locator is frequently visited and the suggested slot is at least 20% closer to the packing station.",
                     "requires_inventory_check": True,
                 }
             )
     return recommendations[:5]
 
 
+def make_part_recommendations(part_counts, locator_counts):
+    candidates = empty_locator_candidates([row["locator_id"] for row in locator_counts])
+    recommendations = []
+    for row in part_counts:
+        if row["visits"] < 2:
+            continue
+        current = locator_coordinate(row["locator_id"])
+        current_distance = abs(current[0] - engine.entrance_coord[0]) + max(current[1] - 1, 0)
+        suggested = next((locator for distance, locator in candidates if distance < current_distance * 0.8), None)
+        if suggested:
+            recommendations.append({
+                "part_code": row["part_code"],
+                "locator_id": canonical_locator(row["locator_id"]),
+                "suggested_locator": suggested,
+                "visits": row["visits"],
+                "reason": "Frequently picked and the suggested empty slot is at least 20% closer to the packing station.",
+            })
+    return recommendations[:10]
+
+
 initialize_analytics_store()
 
 class OptimizationRequest(BaseModel):
-    locators: List[str]
+    locators: List[str] = []
+    items: List[dict] = []
 
 @app.post("/api/optimize")
 def optimize_route(req: OptimizationRequest):
-    if not req.locators: raise HTTPException(status_code=400, detail="List cannot be empty")
-    base_locators = list(set([ "-".join(loc.split('-')[:3]) for loc in req.locators ]))
+    requested_items = [item for item in req.items if item.get("locator_id")]
+    requested_locators = req.locators or [item["locator_id"] for item in requested_items]
+    if not requested_locators: raise HTTPException(status_code=400, detail="List cannot be empty")
+    base_locators = list(set([ "-".join(loc.split('-')[:3]) for loc in requested_locators ]))
     
     sequence, legs = engine.optimize_sequence(base_locators)
-    record_route(sequence, legs)
+    record_route(sequence, legs, requested_items)
     
     formatted_legs = [[{"x": pt[0], "y": pt[1]} for pt in leg] for leg in legs]
     
@@ -312,6 +359,15 @@ def route_analytics(days: int = 30):
             """,
             (since,),
         ).fetchall()
+        part_counts = connection.execute(
+            """
+            SELECT part_code, locator_id, COUNT(*) AS visits
+            FROM route_parts
+            WHERE run_id IN (SELECT id FROM route_runs WHERE recorded_at >= ?)
+            GROUP BY part_code, locator_id ORDER BY visits DESC
+            """,
+            (since,),
+        ).fetchall()
         latest_route = connection.execute(
             """
             SELECT route_json FROM route_runs
@@ -342,6 +398,7 @@ def route_analytics(days: int = 30):
             "sequence": json.loads(latest_route["route_json"]) if latest_route else [],
             "path": [dict(row) for row in latest_cells],
         },
+        "part_recommendations": make_part_recommendations(part_counts, locator_counts),
         "hotspot_locators": [dict(row) for row in locator_counts[:10]],
         "recommendations": make_recommendations(locator_counts),
     }

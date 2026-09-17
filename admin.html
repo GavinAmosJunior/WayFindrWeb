@@ -103,7 +103,7 @@
         const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const PYTHON_API_URL = 'http://localhost:8001';
+        const PYTHON_API_URL = 'https://wayfindrengine.onrender.com';
 
         let toys = []; let pendingTasks = []; let workers = [];
 
@@ -147,8 +147,9 @@
             document.getElementById('hotspotList').innerHTML = data.hotspot_locators.length
                 ? data.hotspot_locators.map(item => `<div class="analytics-row"><span>${item.locator_id}</span><strong>${item.visits} visits</strong></div>`).join('')
                 : '<p style="color:var(--text-muted);font-size:13px;">No route history in this window.</p>';
-            document.getElementById('recommendationList').innerHTML = data.recommendations.length
-                ? data.recommendations.map(item => `<div class="recommendation"><strong>${item.from_locator}</strong> &rarr; <strong>${item.suggested_locator}</strong><br>${item.visits} visits. ${item.reason}</div>`).join('')
+            const recommendations = data.part_recommendations || data.recommendations || [];
+            document.getElementById('recommendationList').innerHTML = recommendations.length
+                ? recommendations.map(item => `<div class="recommendation"><strong>${item.part_code || item.from_locator}</strong>${item.part_code ? ` at ${item.locator_id}` : ''} &rarr; <strong>${item.suggested_locator}</strong><br>${item.visits} visits. ${item.reason}</div>`).join('')
                 : '<p style="color:var(--text-muted);font-size:13px;">No relocation candidates yet.</p>';
         }
 
