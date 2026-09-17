@@ -10,17 +10,38 @@
         :root { --bg-color: #f4f5f7; --sidebar-bg: #ffffff; --primary-blue: #2563EB; --dark-slate: #0F172A; --rack-empty: #d1d5db; }
         body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); display: flex; height: 100vh; box-sizing: border-box; gap: 20px; overflow: hidden; }
         
-        .sidebar { width: 340px; background: var(--sidebar-bg); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; z-index: 20; position: relative;}
-        #setupModePanel { display: flex; flex-direction: column; flex: 1; }
+        .sidebar { width: 340px; min-height: 0; overflow-y: auto; background: var(--sidebar-bg); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; z-index: 20; position: relative;}
+        #setupModePanel { display: flex; flex-direction: column; flex: 0 0 auto; }
         .sidebar h3 { color: var(--dark-slate); margin-top: 0; font-size: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;}
         select { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; font-weight: bold; margin-bottom: 20px; outline: none; cursor: pointer; }
         
         .task-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: none; }
         .task-card h4 { margin: 0 0 5px 0; color: var(--primary-blue); font-size: 14px; }
         .task-card p { margin: 0; font-size: 16px; font-weight: bold; color: var(--dark-slate); }
-        .pick-list { flex: 1; overflow-y: auto; margin-bottom: 20px; }
+        .pick-list { flex: 0 0 auto; margin-bottom: 20px; }
         .pick-item { padding: 12px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; cursor: pointer; transition: 0.2s;}
         .pick-item:hover { border-color: #a855f7; background: #faf5ff; }
+        .return-parts-section { border-top: 1px solid #eee; padding-top: 16px; margin-top: 20px; }
+        .return-parts-section h3 { margin-bottom: 12px; }
+        .return-bin-btn { background: #cc0000; color: white; border: none; width: 100%; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; }
+        #returnBinPanel { display: none; position: fixed; bottom: 20px; left: 20px; width: min(520px, calc(100vw - 40px)); height: 60vh; box-sizing: border-box; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.2); z-index: 30; }
+        .return-bin-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #eee; padding-bottom: 12px; margin-bottom: 20px; }
+        .return-bin-header h2 { color: var(--dark-slate); font-size: 20px; margin: 0; }
+        .return-bin-close { flex: 0 0 auto; width: 36px; height: 36px; box-sizing: border-box; background: transparent; color: #64748b; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 18px; line-height: 1; }
+        .return-bin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .return-bin-table th { color: #64748b; font-size: 11px; text-align: left; text-transform: uppercase; padding: 0 8px 10px; border-bottom: 2px solid #e2e8f0; }
+        .return-bin-table td { color: #64748b; text-align: center; padding: 24px 8px; border-bottom: 1px solid #f1f5f9; }
+        .return-bin-table .part-cell { text-align: left; color: var(--dark-slate); }
+        .return-bin-table .part-name { display: block; color: #666; font-size: 11px; margin-top: 3px; }
+        .return-bin-table .suggested-locator-header { color: #cc0000; }
+        .return-bin-controls { margin-top: 20px; }
+        .return-bin-search-row { display: flex; align-items: center; gap: 8px; }
+        .return-bin-search { flex: 1 1 auto; min-width: 0; height: 40px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+        .return-bin-search-results { display: none; max-height: 140px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; margin-top: 10px; background: white; }
+        .return-bin-part-result { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .return-bin-part-result:last-child { border-bottom: none; }
+        .return-bin-part-result input { width: 45px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; }
+        .return-bin-add { flex: 0 0 auto; width: 96px; height: 40px; box-sizing: border-box; background: #cc0000; color: white; border: none; border-radius: 8px; padding: 10px 12px; cursor: pointer; font-size: 14px; font-weight: bold; white-space: nowrap; }
 
         .start-nav-btn { background: var(--dark-slate); color: white; border: none; width: 100%; padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; display: none; }
 
@@ -91,6 +112,10 @@
                 <p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">Select an active profile.</p>
             </div>
             <button id="startNavBtn" class="start-nav-btn" onclick="startNavigation()">Start Navigation</button>
+            <div class="return-parts-section">
+                <h3>3. Return Parts</h3>
+                <button class="return-bin-btn" onclick="openReturnBin()">View Return Bin</button>
+            </div>
         </div>
 
         <div id="navModePanel">
@@ -131,6 +156,28 @@
         <div id="packingStation">PACKING STATION</div>
     </div>
 
+    <div id="returnBinPanel" role="dialog" aria-modal="true" aria-labelledby="returnBinTitle">
+        <div class="return-bin-header">
+            <h2 id="returnBinTitle">3. Return Bin</h2>
+            <button class="return-bin-close" onclick="closeReturnBin()" aria-label="Close return bin">&times;</button>
+        </div>
+        <table class="return-bin-table">
+            <thead>
+                <tr><th>Part</th><th>Quantity</th><th class="suggested-locator-header">Suggested Locator</th></tr>
+            </thead>
+            <tbody>
+                <tr id="returnBinEmptyRow"><td colspan="3">No parts in the return bin.</td></tr>
+            </tbody>
+        </table>
+        <div class="return-bin-controls">
+            <div class="return-bin-search-row">
+                <input id="returnPartSearch" class="return-bin-search" type="search" placeholder="Search by SKU or Name..." aria-label="Search parts to add" oninput="searchReturnParts()">
+                <button class="return-bin-add" onclick="addReturnParts()">Add Part</button>
+            </div>
+            <div id="returnPartSearchResults" class="return-bin-search-results"></div>
+        </div>
+    </div>
+
     <script>
         const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
@@ -153,8 +200,75 @@
         let isNavigating = false;
         let navIndex = -1; 
         let html5QrCode = null;
+        let allWarehouseParts = [];
+        let returnBinParts = [];
+
+        function openReturnBin() {
+            document.getElementById('returnBinPanel').style.display = 'block';
+        }
+
+        function closeReturnBin() {
+            document.getElementById('returnBinPanel').style.display = 'none';
+        }
+
+        async function fetchReturnParts() {
+            const { data } = await supabaseClient.from('warehouse_parts').select('part_code, part_name, stock_quantity, locator_id');
+            allWarehouseParts = data || [];
+        }
+
+        function searchReturnParts() {
+            const query = document.getElementById('returnPartSearch').value.toUpperCase();
+            const container = document.getElementById('returnPartSearchResults');
+
+            if (query.length < 2) { container.style.display = 'none'; return; }
+
+            const matches = allWarehouseParts.filter(part =>
+                part.part_code.toUpperCase().includes(query) ||
+                part.part_name.toUpperCase().includes(query)
+            );
+
+            if (matches.length === 0) {
+                container.innerHTML = '<div style="color:#999; font-size:12px; padding:10px;">No parts found.</div>';
+            } else {
+                container.innerHTML = matches.map(part => `
+                    <div class="return-bin-part-result">
+                        <div><strong>${part.part_code}</strong><br><span style="font-size:11px;color:#666;">${part.part_name}</span> <span style="font-size:11px;color:#10B981;">(${part.stock_quantity} in stock)</span></div>
+                        <input type="number" min="0" value="0" data-return-sku="${part.part_code}" aria-label="Quantity for ${part.part_code}">
+                    </div>
+                `).join('');
+            }
+            container.style.display = 'block';
+        }
+
+        function addReturnParts() {
+            const inputs = document.querySelectorAll('[data-return-sku]');
+            const selectedParts = Array.from(inputs).filter(input => parseInt(input.value, 10) > 0);
+
+            if (selectedParts.length === 0) return alert('Please enter a quantity for at least one part.');
+
+            selectedParts.forEach(input => {
+                const part = allWarehouseParts.find(item => item.part_code === input.dataset.returnSku);
+                const quantity = parseInt(input.value, 10);
+                const existingPart = returnBinParts.find(item => item.part_code === part.part_code);
+
+                if (existingPart) existingPart.quantity += quantity;
+                else returnBinParts.push({ part_code: part.part_code, part_name: part.part_name, quantity, locator_id: part.locator_id });
+            });
+
+            renderReturnBin();
+            document.getElementById('returnPartSearch').value = '';
+            document.getElementById('returnPartSearchResults').style.display = 'none';
+        }
+
+        function renderReturnBin() {
+            const tableBody = document.querySelector('#returnBinPanel tbody');
+            tableBody.innerHTML = returnBinParts.length === 0
+                ? '<tr id="returnBinEmptyRow"><td colspan="3">No parts in the return bin.</td></tr>'
+                : returnBinParts.map(part => `<tr><td class="part-cell"><strong>${part.part_code}</strong><span class="part-name">${part.part_name}</span></td><td>${part.quantity}</td><td>${part.locator_id || '--'}</td></tr>`).join('');
+        }
 
         async function initApp() {
+            await fetchReturnParts();
             renderGrid();
             const { data } = await supabaseClient.from('workers').select('*').order('id', { ascending: true });
             const select = document.getElementById('workerSelect');
@@ -245,7 +359,10 @@
             try {
                 const response = await fetch(`${PYTHON_API_URL}/api/optimize`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ locators: currentPickList.map(i => i.locator_id) })
+                    body: JSON.stringify({
+                        locators: currentPickList.map(i => i.locator_id),
+                        parts: currentPickList.map(({ locator_id, part_code, part_name }) => ({ locator_id, part_code, part_name })),
+                    })
                 });
                 const result = await response.json();
                 

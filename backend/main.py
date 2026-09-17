@@ -184,8 +184,21 @@ def initialize_analytics_store():
                 run_id INTEGER NOT NULL,
                 locator_id TEXT NOT NULL,
                 stop_order INTEGER NOT NULL,
+                part_code TEXT,
+                part_name TEXT,
                 FOREIGN KEY (run_id) REFERENCES route_runs(id)
             );
+            """
+        )
+        existing_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(route_locators)")
+        }
+        if "part_code" not in existing_columns:
+            connection.execute("ALTER TABLE route_locators ADD COLUMN part_code TEXT")
+        if "part_name" not in existing_columns:
+            connection.execute("ALTER TABLE route_locators ADD COLUMN part_name TEXT")
+        connection.executescript(
+            """
             CREATE INDEX IF NOT EXISTS idx_route_runs_recorded_at
                 ON route_runs(recorded_at);
             CREATE INDEX IF NOT EXISTS idx_route_cells_run
@@ -196,9 +209,14 @@ def initialize_analytics_store():
         )
 
 
-def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]]):
+def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]], parts: List[dict]):
     recorded_at = datetime.now(timezone.utc).isoformat()
     cells = [point for leg in legs for point in leg]
+    part_by_locator = {
+        "-".join(part.get("locator_id", "").split("-")[:3]): part
+        for part in parts
+        if part.get("locator_id")
+    }
     with get_analytics_connection() as connection:
         cursor = connection.execute(
             "INSERT INTO route_runs (recorded_at, route_json, total_steps) VALUES (?, ?, ?)",
@@ -210,8 +228,19 @@ def record_route(sequence: List[str], legs: List[List[Tuple[int, int]]]):
             [(run_id, point[0], point[1], order) for order, point in enumerate(cells)],
         )
         connection.executemany(
-            "INSERT INTO route_locators (run_id, locator_id, stop_order) VALUES (?, ?, ?)",
-            [(run_id, locator, order) for order, locator in enumerate(sequence)],
+            """INSERT INTO route_locators
+               (run_id, locator_id, stop_order, part_code, part_name)
+               VALUES (?, ?, ?, ?, ?)""",
+            [
+                (
+                    run_id,
+                    locator,
+                    order,
+                    part_by_locator.get(locator, {}).get("part_code"),
+                    part_by_locator.get(locator, {}).get("part_name"),
+                )
+                for order, locator in enumerate(sequence)
+            ],
         )
 
 
@@ -282,13 +311,14 @@ initialize_analytics_store()
 
 class OptimizationRequest(BaseModel):
     locators: List[str]
+    parts: List[dict] = []
 
 @app.post("/api/optimize")
 def optimize_route(req: OptimizationRequest):
     if not req.locators: raise HTTPException(status_code=400, detail="List cannot be empty")
     base_locators = {"-".join(loc.split('-')[:3]) for loc in req.locators}
     sequence, legs, total_grid_steps = engine.optimize_sequence(base_locators)
-    record_route(sequence, legs)
+    record_route(sequence, legs, req.parts)
     grid_step_meters = 0.725
     walking_speed_mps = 1.4 
     pick_time_seconds = 90 
@@ -331,12 +361,40 @@ def route_analytics(days: int = 30):
         ).fetchall()
         locator_counts = connection.execute(
             """
-            SELECT locator_id, COUNT(*) AS visits FROM route_locators
-            WHERE locator_id != 'packingStation'
-              AND run_id IN (SELECT id FROM route_runs WHERE recorded_at >= ?)
-            GROUP BY locator_id ORDER BY visits DESC
+                        SELECT route_locators.locator_id, COUNT(*) AS visits,
+                                     (
+                                             SELECT latest_locator.part_code
+                                             FROM route_locators AS latest_locator
+                                             JOIN route_runs AS latest_run ON latest_run.id = latest_locator.run_id
+                                             WHERE latest_locator.locator_id = route_locators.locator_id
+                                                 AND latest_run.recorded_at >= ?
+                                             ORDER BY latest_run.recorded_at DESC, latest_locator.stop_order DESC
+                                             LIMIT 1
+                                     ) AS part_code,
+                                     (
+                                             SELECT latest_locator.part_name
+                                             FROM route_locators AS latest_locator
+                                             JOIN route_runs AS latest_run ON latest_run.id = latest_locator.run_id
+                                             WHERE latest_locator.locator_id = route_locators.locator_id
+                                                 AND latest_run.recorded_at >= ?
+                                             ORDER BY latest_run.recorded_at DESC, latest_locator.stop_order DESC
+                                             LIMIT 1
+                                     ) AS part_name,
+                                     (
+                                             SELECT latest_run.recorded_at
+                                             FROM route_locators AS latest_locator
+                                             JOIN route_runs AS latest_run ON latest_run.id = latest_locator.run_id
+                                             WHERE latest_locator.locator_id = route_locators.locator_id
+                                                 AND latest_run.recorded_at >= ?
+                                             ORDER BY latest_run.recorded_at DESC, latest_locator.stop_order DESC
+                                             LIMIT 1
+                                     ) AS last_visited_at
+                        FROM route_locators
+                        WHERE route_locators.locator_id != 'packingStation'
+                            AND route_locators.run_id IN (SELECT id FROM route_runs WHERE recorded_at >= ?)
+                        GROUP BY route_locators.locator_id ORDER BY visits DESC
             """,
-            (since,),
+                        (since, since, since, since),
         ).fetchall()
         latest_route = connection.execute(
             """

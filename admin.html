@@ -263,6 +263,12 @@
             });
         }
 
+        function formatAnalyticsTimestamp(timestamp) {
+            if (!timestamp) return 'Part snapshot unavailable';
+            const date = new Date(timestamp);
+            return Number.isNaN(date.getTime()) ? timestamp : `Part at ${date.toLocaleString()}`;
+        }
+
         function renderAnalytics(data) {
             const summary = data.summary;
             document.getElementById('analyticsSummary').innerHTML = `
@@ -295,7 +301,7 @@
             });
 
             document.getElementById('hotspotList').innerHTML = data.hotspot_locators.length
-                ? data.hotspot_locators.map(item => `<div class="analytics-row analytics-clickable" role="button" tabindex="0" data-locator="${item.locator_id}"><span>${item.locator_id}</span><strong>${item.visits} visits</strong></div>`).join('')
+                ? data.hotspot_locators.map(item => `<div class="analytics-row analytics-clickable" role="button" tabindex="0" data-locator="${item.locator_id}"><span><strong>${item.locator_id}</strong><br><small>${item.part_code || 'Part snapshot unavailable'}${item.part_name ? ` - ${item.part_name}` : ''}<br>${formatAnalyticsTimestamp(item.last_visited_at)}</small></span><strong>${item.visits} visits</strong></div>`).join('')
                 : '<p style="color:var(--text-muted);font-size:13px;">No route history in this window.</p>';
             document.getElementById('recommendationList').innerHTML = data.recommendations.length
                 ? data.recommendations.map(item => `<div class="recommendation analytics-clickable" role="button" tabindex="0" data-from-locator="${item.from_locator}" data-suggested-locator="${item.suggested_locator}"><strong>${item.from_locator}</strong> &rarr; <strong>${item.suggested_locator}</strong><br>${item.visits} visits. ${item.reason}</div>`).join('')
