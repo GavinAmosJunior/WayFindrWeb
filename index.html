@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PickPath AI - Enhanced Worker Navigation</title>
+    <title>PickPath AI - Enhanced Shopper Navigation</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -26,7 +26,6 @@
 
         .start-nav-btn { background: var(--dark-slate); color: white; border: none; width: 100%; padding: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; display: none; }
 
-        /* Navigation Mode */
         #navModePanel { display: none; flex-direction: column; flex: 1; justify-content: center; }
         .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .nav-badge { background: var(--dark-slate); color: white; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; }
@@ -35,15 +34,14 @@
         .nav-item-name { color: #1E293B; font-size: 20px; margin: 0 0 4px 0; font-weight: bold; line-height: 1.2; }
         .nav-item-sku { color: var(--primary-blue); font-size: 14px; margin: 0 0 15px 0; font-weight: 600; }
         
-        /* Text Instructions */
         .text-instructions { background: #eff6ff; border-left: 4px solid var(--primary-blue); padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; color: #1e3a8a; line-height: 1.5; font-weight: 500;}
 
-        /* Barcode Scanner UI */
         #reader-container { display: none; margin-bottom: 10px; border: 2px solid var(--primary-blue); border-radius: 8px; overflow: hidden; background: #000; }
         .scan-btn { background: #10B981; color: white; border: none; width: 100%; padding: 14px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 15px; margin-bottom: 8px; }
         .scan-feedback { font-weight: bold; font-size: 13px; text-align: center; margin-bottom: 15px; display: none; padding: 8px; border-radius: 6px; }
         .feedback-success { color: #065f46; background: #d1fae5; }
         .feedback-error { color: #991b1b; background: #fee2e2; animation: shake 0.4s; }
+        .feedback-info { color: #1e3a8a; background: #eff6ff; }
 
         @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
 
@@ -52,7 +50,6 @@
         .btn-next { background: var(--dark-slate); color: white; margin-bottom: 8px; display: none; } 
         .btn-back { background: transparent; border: 1.5px solid #CBD5E1; color: #475569; }
 
-        /* Map Container */
         .map-container { flex: 1; background: var(--sidebar-bg); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
         #routeCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
         #gridArea { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; z-index: 5;}
@@ -63,12 +60,10 @@
         .row-label { width: 30px; text-align: center; color: var(--primary-blue); font-weight: bold; font-size: 12px; }
         #packingStation { width: 120px; height: 30px; background-color: var(--dark-slate); color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; margin-top: 20px; z-index: 5;}
         
-        /* Highlight States */
         .map-container.nav-mode .rack:not(.nav-target):not(.overview-target):not(.preview-target):not(.hidden) { opacity: 0.15; }
         .rack.nav-target { background-color: #2563EB !important; transform: scale(1.5); z-index: 15; box-shadow: 0 0 15px rgba(37, 99, 235, 0.6); }
         .rack.preview-target { background-color: #a855f7 !important; transform: scale(1.5); z-index: 15; box-shadow: 0 0 15px rgba(168, 85, 247, 0.6); }
         
-        /* Overview Numbered Badges */
         .rack.overview-target { background-color: #10B981 !important; transform: scale(1.3); z-index: 15; }
         .rack.overview-target::after { content: attr(data-stop); position: absolute; top: -14px; left: -4px; background: var(--dark-slate); color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; display: flex; align-items: center; justify-content: center; }
     </style>
@@ -77,9 +72,9 @@
 
     <div class="sidebar">
         <div id="setupModePanel">
-            <h3>1. Active Workers</h3>
+            <h3>1. Active Shoppers</h3>
             <select id="workerSelect" onchange="fetchWorkerTask()">
-                <option value="" disabled selected>Loading active workers...</option>
+                <option value="" disabled selected>Loading active shoppers...</option>
             </select>
             
             <div id="taskCard" class="task-card">
@@ -135,8 +130,10 @@
         let currentTaskId = null;
         let currentWorkerId = null;
         let currentExpectedSku = "";
+        let currentExpectedLocation = ""; 
+        let currentScanPhase = "location";
         
-        let scannedSteps = new Set(); // Stores the indices of items already scanned
+        let scannedSteps = new Set();
         
         const indentedRows = ['B','D','F','H','J','L','N','P','R','T','V','X'];
         let isNavigating = false;
@@ -148,8 +145,8 @@
             const { data } = await supabaseClient.from('workers').select('*').eq('status', 'Active').order('id', { ascending: true });
             const select = document.getElementById('workerSelect');
             select.innerHTML = '<option value="" disabled selected>Select your profile...</option>';
-            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name}</option>`);
-            else select.innerHTML = '<option value="" disabled selected>No active workers found.</option>';
+            if(data && data.length > 0) data.forEach(w => select.innerHTML += `<option value="${w.id}">${w.worker_name} - ${w.category ? `${w.category[0].toUpperCase() + w.category.slice(1)} Zone` : 'Unassigned'}</option>`);
+            else select.innerHTML = '<option value="" disabled selected>No active shoppers found.</option>';
         }
 
         function renderGrid() {
@@ -179,30 +176,51 @@
             const btn = document.getElementById('startNavBtn');
             document.getElementById('mapContainer').classList.remove('nav-mode');
 
-            const { data: task } = await supabaseClient.from('tasks').select('id, toy_id, preset_toys(toy_name)').eq('worker_id', currentWorkerId).eq('status', 'In Progress').maybeSingle();
-            if (!task) return;
+            // FETCH order_qty:
+            const { data: task } = await supabaseClient.from('tasks')
+                .select('id, toy_id, zone, order_qty, preset_toys(toy_name)')
+                .eq('worker_id', currentWorkerId)
+                .eq('status', 'In Progress')
+                .maybeSingle();
+                
+            if (!task) {
+                taskCard.style.display = 'none';
+                list.innerHTML = '<p style="color: #999; font-size: 12px; text-align: center; margin-top: 50px;">No active task.</p>';
+                btn.style.display = 'none';
+                return;
+            }
 
             currentTaskId = task.id;
-            document.getElementById('taskToyName').innerText = task.preset_toys.toy_name;
+            // DISPLAY THE MULTIPLIER IN THE TASK NAME:
+            document.getElementById('taskToyName').innerText = `${task.preset_toys.toy_name} (x${task.order_qty}) [${task.zone.toUpperCase()} ZONE]`;
             taskCard.style.display = 'block';
 
-            const { data: bomData } = await supabaseClient.from('toy_bom').select('part_code, warehouse_parts(part_name, locator_id)').eq('toy_id', task.toy_id);
-            currentPickList = bomData.map(b => ({ part_code: b.part_code, part_name: b.warehouse_parts.part_name, locator_id: b.warehouse_parts.locator_id }));
+            const { data: bomData } = await supabaseClient.from('toy_bom')
+                .select('part_code, qty_required, warehouse_parts(part_name, locator_id, category)')
+                .eq('toy_id', task.toy_id);
+            
+            currentPickList = bomData
+                .filter(b => b.warehouse_parts.category === task.zone)
+                .map(b => ({ 
+                    part_code: b.part_code, 
+                    part_name: b.warehouse_parts.part_name, 
+                    locator_id: b.warehouse_parts.locator_id, 
+                    qty: b.qty_required * task.order_qty // MULTIPLY BY ORDER QUANTITY HERE
+                }));
 
-            // Estimated Time Calculation Logic Explained in text
             const estMins = Math.ceil(currentPickList.length * 1.5);
             document.getElementById('estTimeBadge').innerText = `Est. Time: ~${estMins} Mins (1.5m per pick)`;
 
             list.innerHTML = '';
             currentPickList.forEach(part => {
-                list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.part_code}</strong><br><span style="font-size:12px;color:#666;">${part.part_name}</span></div></div>`;
+                list.innerHTML += `<div class="pick-item" onclick="previewRack('${part.locator_id}')"><div><strong>${part.locator_id}</strong> <span style="font-size:12px;color:#8b5cf6;font-weight:600;">(SKU: ${part.part_code})</span><br><span style="font-size:12px;color:#666;">${part.part_name}</span><br><span style="font-size:13px;color:#ef4444;font-weight:bold;">&#10148; Quantity to Pick: ${part.qty}</span></div></div>`;
             });
             btn.style.display = 'block';
         }
 
         function previewRack(locatorId) {
             document.querySelectorAll('.rack.preview-target').forEach(el => el.classList.remove('preview-target'));
-            document.getElementById('mapContainer').classList.add('nav-mode'); // Dims background
+            document.getElementById('mapContainer').classList.add('nav-mode');
             const parts = locatorId.split('-');
             const rackId = `rack-${parts[1]}-${parts[2]}`;
             const target = document.getElementById(rackId);
@@ -225,7 +243,7 @@
                 routeSequence.push('packingStation');
                 
                 pathLegs = result.path_legs;
-                scannedSteps.clear(); // Reset scan states
+                scannedSteps.clear();
                 
                 isNavigating = true; navIndex = -1; 
                 document.getElementById('setupModePanel').style.display = 'none';
@@ -242,7 +260,10 @@
             document.getElementById('reader-container').style.display = 'block';
             document.getElementById('btnScan').style.display = 'none';
             const feedback = document.getElementById('scanFeedback');
-            feedback.style.display = 'none';
+            
+            feedback.className = 'scan-feedback feedback-info';
+            feedback.innerText = 'Scan Locator Barcode on the shelf...';
+            feedback.style.display = 'block';
             
             html5QrCode = new Html5Qrcode("reader");
             html5QrCode.start(
@@ -250,22 +271,42 @@
                 { fps: 10, qrbox: { width: 250, height: 100 } },
                 (decodedText) => {
                     const scanned = decodedText.trim().toUpperCase();
-                    if (scanned === currentExpectedSku.toUpperCase()) {
-                        html5QrCode.stop().then(() => {
-                            document.getElementById('reader-container').style.display = 'none';
+
+                    if (currentScanPhase === 'location') {
+                        if (scanned === currentExpectedLocation.toUpperCase()) {
+                            currentScanPhase = 'part';
                             feedback.className = 'scan-feedback feedback-success';
-                            feedback.innerText = '✓ Part Verified';
-                            feedback.style.display = 'block';
-                            
-                            document.getElementById('btnNavNext').style.display = 'block'; 
-                            scannedSteps.add(navIndex); // Save state!
-                        });
-                    } else {
-                        // Error UX
-                        feedback.className = 'scan-feedback feedback-error';
-                        feedback.innerText = `Invalid Part: ${scanned}`;
-                        feedback.style.display = 'block';
-                        setTimeout(() => { if(html5QrCode.isScanning) feedback.style.display = 'none'; }, 2500);
+                            feedback.innerText = '✓ Location Verified! Now scan Part Barcode.';
+                        } else {
+                            feedback.className = 'scan-feedback feedback-error';
+                            feedback.innerText = `Invalid Location: ${scanned}`;
+                            setTimeout(() => { 
+                                if (html5QrCode.isScanning && currentScanPhase === 'location') {
+                                    feedback.className = 'scan-feedback feedback-info';
+                                    feedback.innerText = 'Scan Locator Barcode on the shelf...';
+                                }
+                            }, 2500);
+                        }
+                    } 
+                    else if (currentScanPhase === 'part') {
+                        if (scanned === currentExpectedSku.toUpperCase()) {
+                            html5QrCode.stop().then(() => {
+                                document.getElementById('reader-container').style.display = 'none';
+                                feedback.className = 'scan-feedback feedback-success';
+                                feedback.innerText = '✓ Part Verified';
+                                document.getElementById('btnNavNext').style.display = 'block'; 
+                                scannedSteps.add(navIndex);
+                            });
+                        } else {
+                            feedback.className = 'scan-feedback feedback-error';
+                            feedback.innerText = `Invalid Part: ${scanned}`;
+                            setTimeout(() => { 
+                                if (html5QrCode.isScanning && currentScanPhase === 'part') {
+                                    feedback.className = 'scan-feedback feedback-success';
+                                    feedback.innerText = '✓ Location Verified! Now scan Part Barcode.';
+                                }
+                            }, 2500);
+                        }
                     }
                 },
                 (errorMessage) => { }
@@ -300,7 +341,6 @@
             instructions.style.display = 'none';
 
             if (navIndex === -1) {
-                // Overview Mode UX (Numbers instead of lines)
                 document.getElementById('navStepBadge').innerText = `OVERVIEW`;
                 document.getElementById('navItemName').innerText = `Route Generated`;
                 document.getElementById('navItemSku').innerText = `Review target locations, then begin.`;
@@ -328,21 +368,21 @@
                 const part = currentPickList.find(p => p.locator_id.includes(locMatch));
                 
                 currentExpectedSku = part.part_code;
+                currentExpectedLocation = part.locator_id; 
+                currentScanPhase = 'location';
 
                 document.getElementById('navStepBadge').innerText = `STEP ${navIndex + 1} OF ${routeSequence.length - 2}`;
                 document.getElementById('navItemName').innerText = `Retrieve: ${part.part_name}`;
                 document.getElementById('navItemSku').innerText = `SKU ID: ${part.part_code}`;
                 
-                // Text Instructions
                 const rowLtr = locMatch.split('-')[0];
                 const colNum = locMatch.split('-')[1];
                 const shelf = part.locator_id.endsWith('-2') ? 'Top Shelf' : 'Bottom Shelf';
-                instructions.innerHTML = `&#10148; Enter Aisle <b>${rowLtr}</b>.<br>&#10148; Locate Rack <b>${colNum}</b>.<br>&#10148; Pick item from <b>${shelf}</b>.`;
+                instructions.innerHTML = `&#10148; Enter Aisle <b>${rowLtr}</b>.<br>&#10148; Locate Rack <b>${colNum}</b>.<br>&#10148; Pick <b><span style="color:#ef4444;">${part.qty} item(s)</span></b> from <b>${shelf}</b>.`;
                 instructions.style.display = 'block';
 
                 btnBack.innerText = 'Back Step';
                 
-                // Back Step State Check
                 if (scannedSteps.has(navIndex)) {
                     btnNext.innerText = 'Next Stop'; btnNext.style.display = 'block';
                     btnScan.style.display = 'none';
@@ -351,6 +391,7 @@
                     feedback.style.display = 'block';
                 } else {
                     btnNext.style.display = 'none';
+                    btnScan.innerText = 'Start Location & Part Scan';
                     btnScan.style.display = 'block';
                 }
             }
@@ -398,7 +439,7 @@
             canvas.height = document.getElementById('mapContainer').clientHeight;
             const ctx = canvas.getContext('2d');
             
-            if (activeStep === -1) return; // Overview Mode: Draw nothing (just numbered badges)
+            if (activeStep === -1) return;
 
             const drawLeg = (leg) => {
                 if (!leg || leg.length === 0) return;

@@ -1,0 +1,4 @@
+wayenv/
+*/__pycache__/
+__pycache__
+barcodes/
