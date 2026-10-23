@@ -8,12 +8,15 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 import sqlite3
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 app = FastAPI(title="PickPath AI Routing Engine")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:8080").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -3,7 +3,6 @@ from barcode.writer import ImageWriter
 import csv
 import os
 
-# Create output directories
 base_output = os.path.join(os.path.dirname(__file__), "barcodes")
 locator_dir = os.path.join(base_output, "locators")
 sku_dir = os.path.join(base_output, "skus")
@@ -29,7 +28,6 @@ for loc in locators:
     my_barcode.save(filename, options=options)
     print(f"Saved locator barcode: {loc}.png")
 
-# Hardcoded list of the new SKUs you just inserted (or you can fetch these from Supabase/CSV if stored there)
 new_skus = ["SKU-20001", "SKU-20002", "SKU-20003", "SKU-20004", "SKU-20005", "SKU-20006"]
 
 print("\nGenerating Part SKU barcodes for polybags...")

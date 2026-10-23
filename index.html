@@ -6,6 +6,8 @@
     <title>PickPath AI - Enhanced Shopper Navigation</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
     <style>
         :root { --bg-color: #f4f5f7; --sidebar-bg: #ffffff; --primary-blue: #2563EB; --dark-slate: #0F172A; --rack-empty: #d1d5db; }
         body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); display: flex; height: 100vh; box-sizing: border-box; gap: 20px; overflow: hidden; }
@@ -55,7 +57,6 @@
         
         .nav-item-name { color: #1E293B; font-size: 20px; margin: 0 0 4px 0; font-weight: bold; line-height: 1.2; }
         .nav-item-sku { color: var(--primary-blue); font-size: 14px; margin: 0 0 15px 0; font-weight: 600; }
-        /* Displays the calculated route distance and walking time. */
         .route-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 16px; }
         .route-metric { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
         .route-metric-label { display: block; color: #64748b; font-size: 10px; font-weight: bold; text-transform: uppercase; }
@@ -128,7 +129,6 @@
             </div>
             <h2 id="navItemName" class="nav-item-name">Warehouse Scan</h2>
             <p id="navItemSku" class="nav-item-sku">Ready to begin</p>
-            <!-- Route estimates are filled after the backend calculates the route. -->
             <div class="route-metrics">
                 <div class="route-metric">
                     <span class="route-metric-label">Est. Distance</span>
@@ -183,10 +183,8 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://gqrgmbbpvazseucbfqkr.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_42UoEaAXddNOJ_lQdgz4vA_QTyLTO-C';
+        const { SUPABASE_URL, SUPABASE_KEY, PYTHON_API_URL } = window.APP_CONFIG;
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const PYTHON_API_URL = 'http://localhost:8000';
         const GRID_STEP_METERS = 1;
 
         let currentPickList = [];
@@ -385,7 +383,6 @@
             const btn = document.getElementById('startNavBtn');
             document.getElementById('mapContainer').classList.remove('nav-mode');
 
-            // FETCH order_qty:
             const { data: task } = await supabaseClient.from('tasks')
                 .select('id, toy_id, zone, order_qty, preset_toys(toy_name)')
                 .eq('worker_id', currentWorkerId)
@@ -400,7 +397,6 @@
             }
 
             currentTaskId = task.id;
-            // DISPLAY THE MULTIPLIER IN THE TASK NAME:
             document.getElementById('taskToyName').innerText = `${task.preset_toys.toy_name} (x${task.order_qty}) [${task.zone.toUpperCase()} ZONE]`;
             taskCard.style.display = 'block';
 
@@ -414,7 +410,7 @@
                     part_code: b.part_code, 
                     part_name: b.warehouse_parts.part_name, 
                     locator_id: b.warehouse_parts.locator_id, 
-                    qty: b.qty_required * task.order_qty // MULTIPLY BY ORDER QUANTITY HERE
+                    qty: b.qty_required * task.order_qty
                 }));
 
             list.innerHTML = '';
@@ -451,10 +447,8 @@
                 result.optimized_sequence.forEach(loc => routeSequence.push(`rack-${loc.split('-')[1]}-${loc.split('-')[2]}`));
                 routeSequence.push('packingStation');
                 
-                // Keep only valid path data before calculating the route summary.
                 pathLegs = Array.isArray(result.path_legs) ? result.path_legs : [];
                 const apiDistance = Number(result.distance_meters ?? result.total_distance);
-                // Calculate distance from path coordinates when the API has no distance field.
                 const calculatedSteps = pathLegs.reduce((routeTotal, leg) => {
                     if (!Array.isArray(leg)) return routeTotal;
                     return routeTotal + leg.reduce((legTotal, point, index) => {
@@ -475,21 +469,19 @@
                 document.getElementById('routeDistance').innerText = `${Math.round(distanceMeters)} m`;
                 document.getElementById('routeTime').innerText = formatDuration(estimatedTimeSeconds);
                 pathLegs = result.path_legs;
-                scannedSteps.clear(); // Reset scan states
+                scannedSteps.clear();
                 
                 isNavigating = true; navIndex = -1; 
                 document.getElementById('setupModePanel').style.display = 'none';
                 document.getElementById('navModePanel').style.display = 'flex';
                 document.getElementById('mapContainer').classList.add('nav-mode');
                 
-                // Show the overview panel, then draw the complete route after layout updates.
                 updateNavUI();
                 requestAnimationFrame(() => drawCanvasLines(-1));
 
             } catch (err) { alert('API Error. Ensure Python backend is running.'); } 
             finally { btn.disabled = false; btn.innerText = 'Start Navigation'; }
         }
-        // Utility function to format duration in seconds to a human-readable string
         function formatDuration(totalSeconds) {
             totalSeconds = Number(totalSeconds);
             if (!Number.isFinite(totalSeconds)) return '--';
@@ -735,12 +727,11 @@
                 ctx.shadowBlur = activeStep === -1 ? 0 : 5;
                 ctx.stroke();
             };
-            // Overview shows every leg; navigation mode shows only the current leg.
             if (activeStep === -1) pathLegs.forEach(drawLeg);
             else drawLeg(pathLegs[activeStep]);
         }
 
-        window.onload = initApp;
+        window.onload = () => requireAuth(supabaseClient, initApp);
     </script>
 </body>
 </html>
