@@ -6,7 +6,12 @@ SETUP:
 
    config.js and .env are gitignored, so your values stay local.
 
-2. Install backend dependencies:
+2. Secure Supabase:
+   - Run supabase/policies.sql in the Supabase SQL editor (enables RLS, read-only for anonymous users)
+   - Authentication > Sign In / Providers: turn off "Allow new users to sign up"
+   - Authentication > Users: add a user for each person who should sign in
+
+3. Install backend dependencies:
    python -m venv wayenv
    pip install -r backend/requirements.txt
 

@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
+    <script src="auth.js"></script>
     <style>
         :root { --bg-color: #f4f5f7; --sidebar-bg: #ffffff; --primary-blue: #2563EB; --dark-slate: #0F172A; --rack-empty: #d1d5db; }
         body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: var(--bg-color); display: flex; height: 100vh; box-sizing: border-box; gap: 20px; overflow: hidden; }
@@ -730,7 +731,7 @@
             else drawLeg(pathLegs[activeStep]);
         }
 
-        window.onload = initApp;
+        window.onload = () => requireAuth(supabaseClient, initApp);
     </script>
 </body>
 </html>
