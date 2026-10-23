@@ -1,6 +1,10 @@
 *.py[cod]
-backend/route_analytics.db
+__pycache__/
 wayenv/
-*/__pycache__/
-__pycache__
+.DS_Store
+
+.env
+config.js
+
+backend/route_analytics.db
 barcodes/
